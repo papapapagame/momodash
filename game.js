@@ -14,6 +14,8 @@
   const PEACH_SCORE = 100;
   const FEATHER_BONUS_SCORE = 200;
   const BEST_KEY = "momoDashBest";
+  const RECORDS_KEY = "momoDashRecords";
+  const MODE_KEY = "momoDashMode";
   const BGM_MODE_KEY = "momoDashBgmMode";
   const SFX_KEY = "momoDashSfx";
   const CHAR_KEY = "momoDashChar";
@@ -25,6 +27,7 @@
   ];
   const BGM_MODE_VALUES = ["0", "1", "2", "sequence", "random", "off"];
   const CHAR_IDS = ["normal", "spin", "heavy", "wing"];
+  const MODE_IDS = ["easy", "normal", "hard"];
   const CHARACTERS = {
     normal: {
       id: "normal",
@@ -63,10 +66,13 @@
   const scoreEl = document.getElementById("score-value");
   const bestEl = document.getElementById("best-value");
   const speedEl = document.getElementById("speed-value");
-  const titleBestEl = document.getElementById("title-best-value");
   const featherHud = document.getElementById("feather-hud");
   const charDescEl = document.getElementById("char-desc");
   const charButtons = Array.prototype.slice.call(document.querySelectorAll(".char-btn"));
+  const modeButtons = Array.prototype.slice.call(document.querySelectorAll(".mode-btn"));
+  const charBestEasyEl = document.getElementById("char-best-easy");
+  const charBestNormalEl = document.getElementById("char-best-normal");
+  const charBestHardEl = document.getElementById("char-best-hard");
   const titleScreen = document.getElementById("title-screen");
   const gameoverScreen = document.getElementById("gameover-screen");
   const finalScoreEl = document.getElementById("final-score");
@@ -84,10 +90,11 @@
   let debugMode = false;
   let debugTapCount = 0;
   const DEBUG_TAPS_NEEDED = 10;
-  let best = Number(localStorage.getItem(BEST_KEY) || 0);
+  let records = loadRecords();
   let bgmMode = loadBgmMode();
   let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
   let selectedCharId = loadSelectedChar();
+  let selectedMode = loadSelectedMode();
   let score = 0;
   let distance = 0;
   let lastDistScore = 0;
@@ -126,14 +133,79 @@
     return "0";
   }
 
+  function emptyRecords() {
+    const chars = {};
+    for (let i = 0; i < CHAR_IDS.length; i++) {
+      chars[CHAR_IDS[i]] = { easy: 0, normal: 0, hard: 0 };
+    }
+    return {
+      modes: {
+        easy: { score: 0, charId: null },
+        normal: { score: 0, charId: null },
+        hard: { score: 0, charId: null },
+      },
+      chars: chars,
+    };
+  }
+
+  function loadRecords() {
+    const data = emptyRecords();
+    try {
+      const raw = JSON.parse(localStorage.getItem(RECORDS_KEY) || "null");
+      if (raw && raw.modes && raw.chars) {
+        for (let i = 0; i < MODE_IDS.length; i++) {
+          const m = MODE_IDS[i];
+          if (raw.modes[m]) {
+            data.modes[m].score = Number(raw.modes[m].score) || 0;
+            data.modes[m].charId =
+              CHAR_IDS.indexOf(raw.modes[m].charId) !== -1 ? raw.modes[m].charId : null;
+          }
+        }
+        for (let i = 0; i < CHAR_IDS.length; i++) {
+          const c = CHAR_IDS[i];
+          if (raw.chars[c]) {
+            for (let j = 0; j < MODE_IDS.length; j++) {
+              const m = MODE_IDS[j];
+              data.chars[c][m] = Number(raw.chars[c][m]) || 0;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    // 旧ハイスコアを NORMAL に移行
+    const legacy = Number(localStorage.getItem(BEST_KEY) || 0);
+    if (legacy > data.modes.normal.score) {
+      data.modes.normal.score = legacy;
+      if (!data.modes.normal.charId) data.modes.normal.charId = "normal";
+      data.chars.normal.normal = Math.max(data.chars.normal.normal, legacy);
+    }
+    return data;
+  }
+
+  function saveRecords() {
+    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  }
+
   function loadSelectedChar() {
     const raw = localStorage.getItem(CHAR_KEY);
     if (CHAR_IDS.indexOf(raw) !== -1) return raw;
     return "normal";
   }
 
+  function loadSelectedMode() {
+    const raw = localStorage.getItem(MODE_KEY);
+    if (MODE_IDS.indexOf(raw) !== -1) return raw;
+    return "normal";
+  }
+
   function currentChar() {
     return CHARACTERS[selectedCharId] || CHARACTERS.normal;
+  }
+
+  function currentModeBest() {
+    return (records.modes[selectedMode] && records.modes[selectedMode].score) || 0;
   }
 
   function setSelectedChar(id) {
@@ -143,6 +215,52 @@
     syncCharSelectUi();
   }
 
+  function setSelectedMode(id) {
+    if (MODE_IDS.indexOf(id) === -1) return;
+    selectedMode = id;
+    localStorage.setItem(MODE_KEY, id);
+    syncModeSelectUi();
+    syncBestDisplay();
+  }
+
+  function syncModeSelectUi() {
+    for (let i = 0; i < modeButtons.length; i++) {
+      const btn = modeButtons[i];
+      const on = btn.getAttribute("data-mode") === selectedMode;
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  function applyRecordCharIcon(el, charId) {
+    if (!el) return;
+    el.className = "record-char char-swatch";
+    if (charId && CHAR_IDS.indexOf(charId) !== -1) {
+      el.classList.add("char-swatch-" + charId);
+      el.classList.add("has-record");
+      el.title = CHARACTERS[charId] ? CHARACTERS[charId].name : charId;
+    } else {
+      el.removeAttribute("title");
+    }
+  }
+
+  function syncModeRecordsUi() {
+    for (let i = 0; i < MODE_IDS.length; i++) {
+      const m = MODE_IDS[i];
+      const scoreNode = document.getElementById("record-" + m + "-score");
+      const charNode = document.getElementById("record-" + m + "-char");
+      const rec = records.modes[m];
+      if (scoreNode) scoreNode.textContent = String(rec.score || 0);
+      applyRecordCharIcon(charNode, rec.score > 0 ? rec.charId : null);
+    }
+  }
+
+  function syncCharRecordsUi() {
+    const c = records.chars[selectedCharId] || { easy: 0, normal: 0, hard: 0 };
+    if (charBestEasyEl) charBestEasyEl.textContent = String(c.easy || 0);
+    if (charBestNormalEl) charBestNormalEl.textContent = String(c.normal || 0);
+    if (charBestHardEl) charBestHardEl.textContent = String(c.hard || 0);
+  }
+
   function syncCharSelectUi() {
     for (let i = 0; i < charButtons.length; i++) {
       const btn = charButtons[i];
@@ -150,6 +268,30 @@
       btn.setAttribute("aria-pressed", on ? "true" : "false");
     }
     if (charDescEl) charDescEl.textContent = currentChar().desc;
+    syncCharRecordsUi();
+  }
+
+  function submitScore(finalScore) {
+    if (debugMode) return false;
+    let isNew = false;
+    const modeRec = records.modes[selectedMode];
+    if (finalScore > (modeRec.score || 0)) {
+      modeRec.score = finalScore;
+      modeRec.charId = selectedCharId;
+      isNew = true;
+    }
+    const charRec = records.chars[selectedCharId];
+    if (charRec && finalScore > (charRec[selectedMode] || 0)) {
+      charRec[selectedMode] = finalScore;
+      isNew = true;
+    }
+    if (isNew) {
+      saveRecords();
+      syncBestDisplay();
+      syncModeRecordsUi();
+      syncCharRecordsUi();
+    }
+    return isNew;
   }
 
   const player = {
@@ -170,9 +312,7 @@
   };
 
   function syncBestDisplay() {
-    const text = String(best);
-    bestEl.textContent = text;
-    titleBestEl.textContent = text;
+    bestEl.textContent = String(currentModeBest());
   }
 
   function syncFeatherHud() {
@@ -571,6 +711,9 @@
     stopBgm();
     resetGame();
     initDecor();
+    syncModeRecordsUi();
+    syncCharRecordsUi();
+    syncBestDisplay();
   }
 
   function startGame(asDebug) {
@@ -599,12 +742,7 @@
     shake = 12;
     spawnBurst(player.x, player.y - player.r, "#ff8fab", 18);
     finalScoreEl.textContent = String(score);
-    const isNew = score > best;
-    if (isNew) {
-      best = score;
-      localStorage.setItem(BEST_KEY, String(best));
-      syncBestDisplay();
-    }
+    const isNew = submitScore(score);
     newBestEl.classList.toggle("hidden", !isNew);
     gameoverScreen.classList.remove("hidden");
     syncDebugUi();
@@ -718,21 +856,30 @@
     }
   }
 
+  /** 障害物出現など用（従来どおり） */
   function difficultyFactor() {
     return Math.min(1, distance / 3500);
   }
 
+  /** スピード上昇用（従来の約1/3の速度で上昇） */
+  function speedDifficultyFactor() {
+    return Math.min(1, distance / 10500);
+  }
+
   /** 表示・移動速度用のパーセント（100起算、上限なし） */
   function speedPercent() {
+    const preCap = selectedMode === "hard" ? 400 : 200;
+    const preRange = preCap - 100;
+
     if (score < 10000) {
-      return 100 + difficultyFactor() * 100;
+      return 100 + speedDifficultyFactor() * preRange;
     }
     if (score < 15000) {
-      // 10000→200%, 15000→250%
-      return 200 + ((score - 10000) / 5000) * 50;
+      // 10000→preCap, 15000→preCap+50
+      return preCap + ((score - 10000) / 5000) * 50;
     }
     // 15000以降: 10000スコアごとに +50%（上限なし）
-    return 250 + ((score - 15000) / 10000) * 50;
+    return preCap + 50 + ((score - 15000) / 10000) * 50;
   }
 
   function currentSpeed() {
@@ -747,10 +894,19 @@
 
   function spawnObstacle() {
     const d = difficultyFactor();
-    const types = ["rock", "tree", "hole"];
-    if (d > 0.15) types.push("bird");
-    if (d > 0.4) types.push("bird", "hole");
-    if (d > 0.65) types.push("rock", "tree", "bird");
+    let types;
+
+    if (selectedMode === "easy") {
+      types = ["hole"];
+      if (score >= 2000) types.push("rock");
+      if (score >= 4000) types.push("tree");
+      if (score >= 6000) types.push("bird");
+    } else {
+      types = ["rock", "tree", "hole"];
+      if (d > 0.15) types.push("bird");
+      if (d > 0.4) types.push("bird", "hole");
+      if (d > 0.65) types.push("rock", "tree", "bird");
+    }
 
     const type = types[(Math.random() * types.length) | 0];
     const base = { type, x: W + 40, passed: false };
@@ -777,13 +933,31 @@
         y: GROUND_Y + 8,
       });
     } else if (type === "bird") {
-      obstacles.push({
-        ...base,
-        w: 40,
-        h: 28,
-        y: GROUND_Y - (90 + Math.random() * 100),
-        bob: Math.random() * Math.PI * 2,
-      });
+      if (selectedMode === "hard") {
+        // 個体差ありの一定周期・広めの上下
+        const amp = 48 + Math.random() * 42;
+        const mid = GROUND_Y - (110 + Math.random() * 120);
+        obstacles.push({
+          ...base,
+          w: 40,
+          h: 28,
+          y: mid,
+          bob: Math.random() * Math.PI * 2,
+          bobSpeed: 2.2 + Math.random() * 2.4,
+          bobAmp: amp,
+          hardBird: true,
+        });
+      } else {
+        obstacles.push({
+          ...base,
+          w: 40,
+          h: 28,
+          y: GROUND_Y - (90 + Math.random() * 100),
+          bob: Math.random() * Math.PI * 2,
+          bobSpeed: 4,
+          bobAmp: 10,
+        });
+      }
     }
   }
 
@@ -1136,8 +1310,10 @@
 
       o.x -= speed * dt;
       if (o.type === "bird") {
-        o.bob += dt * 4;
-        o.drawY = o.y + Math.sin(o.bob) * 10;
+        const bobSpeed = o.bobSpeed != null ? o.bobSpeed : 4;
+        const bobAmp = o.bobAmp != null ? o.bobAmp : 10;
+        o.bob += dt * bobSpeed;
+        o.drawY = o.y + Math.sin(o.bob) * bobAmp;
       } else {
         o.drawY = o.y;
       }
@@ -2422,7 +2598,7 @@
     return !!(
       target &&
       target.closest &&
-      target.closest("button, a, input, select, label, .panel, .sound-settings, .char-select, .debug-exit-btn")
+      target.closest("button, a, input, select, label, .panel, .sound-settings, .char-select, .mode-select, .mode-records, .debug-exit-btn")
     );
   }
 
@@ -2496,9 +2672,19 @@
     });
   }
 
+  for (let i = 0; i < modeButtons.length; i++) {
+    modeButtons[i].addEventListener("click", function (e) {
+      e.stopPropagation();
+      setSelectedMode(modeButtons[i].getAttribute("data-mode"));
+    });
+  }
+
   ensureBgm();
   syncSoundToggles();
+  syncModeSelectUi();
+  syncModeRecordsUi();
   syncCharSelectUi();
+  syncBestDisplay();
   initDecor();
   showTitle();
   lastTime = performance.now();

@@ -40,10 +40,34 @@
       <div class="panel title-panel">
         <p class="brand">ももダッシュ</p>
         <p class="tagline">
-          キャラを選んでスタート！<br>
+          キャラと難易度を選んでスタート！<br>
           タップでジャンプ（キャラによって能力が違うよ）
         </p>
-        <p class="title-best">ハイスコア <span id="title-best-value">0</span></p>
+        <div class="mode-records" id="mode-records">
+          <div class="mode-record">
+            <span class="mode-record-label">EASY</span>
+            <span class="mode-record-score" id="record-easy-score">0</span>
+            <span class="record-char char-swatch" id="record-easy-char" aria-hidden="true"></span>
+          </div>
+          <div class="mode-record">
+            <span class="mode-record-label">NORMAL</span>
+            <span class="mode-record-score" id="record-normal-score">0</span>
+            <span class="record-char char-swatch" id="record-normal-char" aria-hidden="true"></span>
+          </div>
+          <div class="mode-record">
+            <span class="mode-record-label">HARD</span>
+            <span class="mode-record-score" id="record-hard-score">0</span>
+            <span class="record-char char-swatch" id="record-hard-char" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="mode-select">
+          <span class="sound-field-label">難易度</span>
+          <div class="mode-grid" role="listbox" aria-label="難易度選択">
+            <button type="button" class="mode-btn" data-mode="easy" aria-pressed="false">EASY</button>
+            <button type="button" class="mode-btn" data-mode="normal" aria-pressed="true">NORMAL</button>
+            <button type="button" class="mode-btn" data-mode="hard" aria-pressed="false">HARD</button>
+          </div>
+        </div>
         <div class="char-select">
           <span class="sound-field-label">キャラ選択</span>
           <div class="char-grid" role="listbox" aria-label="キャラクター選択">
@@ -65,6 +89,11 @@
             </button>
           </div>
           <p id="char-desc" class="char-desc"></p>
+          <div id="char-records" class="char-records">
+            <span>EASY <b id="char-best-easy">0</b></span>
+            <span>NORMAL <b id="char-best-normal">0</b></span>
+            <span>HARD <b id="char-best-hard">0</b></span>
+          </div>
         </div>
         <div class="sound-settings">
           <label class="bgm-select-wrap">

@@ -202,9 +202,9 @@ body {
 }
 
 .tagline {
-  font-size: 0.78rem;
+  font-size: clamp(0.7rem, 2.2vh, 0.85rem);
   font-weight: 500;
-  line-height: 1.7;
+  line-height: 1.55;
   opacity: 0.8;
   margin-bottom: 14px;
 }

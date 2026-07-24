@@ -1068,7 +1068,20 @@
     if (selectedMode === "easy" && score < 2000) {
       return 2.4 + Math.random() * 1.1;
     }
-    return Math.max(0.55, 1.55 - difficultyFactor() * 0.9) + Math.random() * 0.45;
+    let base = Math.max(0.55, 1.55 - difficultyFactor() * 0.9) + Math.random() * 0.45;
+    const late = lateSpawnLevel();
+    if (late > 0) {
+      // 10000以降、1000ごとに出現間隔を短縮（下限あり）
+      base *= Math.max(0.35, 1 - late * 0.08);
+      base = Math.max(0.28, base);
+    }
+    return base;
+  }
+
+  /** 10000以上: 1, 11000: 2, … */
+  function lateSpawnLevel() {
+    if (score < 10000) return 0;
+    return 1 + Math.floor((score - 10000) / 1000);
   }
 
   function spawnObstacle() {
@@ -1488,11 +1501,14 @@
       nextSpawn = nextObstacleSpawnDelay();
       spawnObstacle();
       // EASYの穴のみ区間は連続スポーンなし
+      const late = lateSpawnLevel();
+      const doubleChance = 0.28 + late * 0.06;
       if (!(selectedMode === "easy" && score < 2000) &&
-          difficultyFactor() > 0.5 && Math.random() < 0.28) {
+          (difficultyFactor() > 0.5 || late > 0) &&
+          Math.random() < Math.min(0.7, doubleChance)) {
         setTimeout(function () {
           if (state === "playing") spawnObstacle();
-        }, 220 + Math.random() * 180);
+        }, Math.max(90, 220 - late * 12) + Math.random() * Math.max(60, 180 - late * 10));
       }
     }
 

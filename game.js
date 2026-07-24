@@ -16,6 +16,7 @@
   const BEST_KEY = "momoDashBest";
   const BGM_MODE_KEY = "momoDashBgmMode";
   const SFX_KEY = "momoDashSfx";
+  const CHAR_KEY = "momoDashChar";
   const BGM_VOLUME = 0.45;
   const BGM_TRACKS = [
     { file: "sounds/bgm.mp3", label: "ももももラン！" },
@@ -23,6 +24,37 @@
     { file: "sounds/peach-dash.mp3", label: "Peach Dash" },
   ];
   const BGM_MODE_VALUES = ["0", "1", "2", "sequence", "random", "off"];
+  const CHAR_IDS = ["normal", "spin", "heavy", "wing"];
+  const CHARACTERS = {
+    normal: {
+      id: "normal",
+      name: "ノーマル桃",
+      desc: "普通のもも。1度だけ落とし穴以外の障害物への接触を我慢できるし時間経過で獲得できるスコアが他のももより少し多いぞ！",
+      distMult: 1.2,
+      canDive: true,
+    },
+    spin: {
+      id: "spin",
+      name: "スピン桃",
+      desc: "ジャンプ上昇中はスピンで落とし穴以外の障害物を吹き飛ばしてスコアにするぞ！ただし急降下は出来なくなる",
+      distMult: 0.8,
+      canDive: false,
+    },
+    heavy: {
+      id: "heavy",
+      name: "ヘビー桃",
+      desc: "急降下中に接触した落とし穴以外の障害物を破壊してスコアにするぞ！ただし羽を取っても3段ジャンプが出来なくなる",
+      distMult: 0.8,
+      canDive: true,
+    },
+    wing: {
+      id: "wing",
+      name: "ウイング桃",
+      desc: "常に3段ジャンプが出来るし、羽を取った後は3段ジャンプ発動から着地までに接触したすべての障害物を消し去りスコアにするぞ！ただし急降下は出来ないし、スコアの伸びも一番遅い",
+      distMult: 0.65,
+      canDive: false,
+    },
+  };
 
   const canvas = document.getElementById("game-canvas");
   const ctx = canvas.getContext("2d");
@@ -33,6 +65,8 @@
   const speedEl = document.getElementById("speed-value");
   const titleBestEl = document.getElementById("title-best-value");
   const featherHud = document.getElementById("feather-hud");
+  const charDescEl = document.getElementById("char-desc");
+  const charButtons = Array.prototype.slice.call(document.querySelectorAll(".char-btn"));
   const titleScreen = document.getElementById("title-screen");
   const gameoverScreen = document.getElementById("gameover-screen");
   const finalScoreEl = document.getElementById("final-score");
@@ -53,9 +87,11 @@
   let best = Number(localStorage.getItem(BEST_KEY) || 0);
   let bgmMode = loadBgmMode();
   let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
+  let selectedCharId = loadSelectedChar();
   let score = 0;
   let distance = 0;
   let lastDistScore = 0;
+  let distScoreAcc = 0;
   let speed = 280;
   let spawnTimer = 0;
   let nextSpawn = 1.4;
@@ -90,6 +126,32 @@
     return "0";
   }
 
+  function loadSelectedChar() {
+    const raw = localStorage.getItem(CHAR_KEY);
+    if (CHAR_IDS.indexOf(raw) !== -1) return raw;
+    return "normal";
+  }
+
+  function currentChar() {
+    return CHARACTERS[selectedCharId] || CHARACTERS.normal;
+  }
+
+  function setSelectedChar(id) {
+    if (CHAR_IDS.indexOf(id) === -1) return;
+    selectedCharId = id;
+    localStorage.setItem(CHAR_KEY, id);
+    syncCharSelectUi();
+  }
+
+  function syncCharSelectUi() {
+    for (let i = 0; i < charButtons.length; i++) {
+      const btn = charButtons[i];
+      const on = btn.getAttribute("data-char") === selectedCharId;
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    if (charDescEl) charDescEl.textContent = currentChar().desc;
+  }
+
   const player = {
     x: PLAYER_X,
     y: GROUND_Y,
@@ -101,6 +163,10 @@
     diving: false,
     squish: 1,
     blink: 0,
+    shield: 0,
+    wingClear: false,
+    spinAngle: 0,
+    invuln: 0,
   };
 
   function syncBestDisplay() {
@@ -110,6 +176,11 @@
   }
 
   function syncFeatherHud() {
+    const label = featherHud.querySelector(".feather-label");
+    if (label) {
+      label.textContent =
+        selectedCharId === "wing" ? "消し去り" : "3段ジャンプ";
+    }
     featherHud.classList.toggle("hidden", !player.feather);
   }
 
@@ -436,6 +507,8 @@
   }
 
   function maxJumps() {
+    if (selectedCharId === "wing") return 3;
+    if (selectedCharId === "heavy") return MAX_JUMPS;
     return MAX_JUMPS + (player.feather ? 1 : 0);
   }
 
@@ -443,6 +516,7 @@
     score = 0;
     distance = 0;
     lastDistScore = 0;
+    distScoreAcc = 0;
     speed = 280;
     spawnTimer = 0;
     nextSpawn = 1.2;
@@ -462,11 +536,15 @@
     player.y = GROUND_Y;
     player.vy = 0;
     player.onGround = true;
-    player.jumpsLeft = MAX_JUMPS;
     player.feather = false;
     player.diving = false;
     player.squish = 1;
     player.blink = 0;
+    player.shield = selectedCharId === "normal" ? 1 : 0;
+    player.wingClear = false;
+    player.spinAngle = 0;
+    player.invuln = 0;
+    player.jumpsLeft = maxJumps();
     setScore(0);
     syncBestDisplay();
     syncFeatherHud();
@@ -531,7 +609,10 @@
     if (state !== "playing") return;
     if (player.jumpsLeft <= 0) return;
 
-    const isTriple = player.feather && !player.onGround && player.jumpsLeft === 1;
+    const canTriple =
+      selectedCharId === "wing" ||
+      (selectedCharId !== "heavy" && player.feather);
+    const isTriple = canTriple && !player.onGround && player.jumpsLeft === 1;
     const isDouble = !player.onGround && !isTriple;
     let kind = "single";
     let vy = JUMP_V;
@@ -543,8 +624,17 @@
       vy = TRIPLE_JUMP_V;
       color = "#a8e8ff";
       burst = 14;
-      player.feather = false;
-      syncFeatherHud();
+      if (selectedCharId === "wing") {
+        if (player.feather) {
+          player.wingClear = true;
+          player.feather = false;
+          syncFeatherHud();
+          spawnFloatText(player.x, player.y - player.r - 24, "消し去り！", "#5a8ad0");
+        }
+      } else {
+        player.feather = false;
+        syncFeatherHud();
+      }
     } else if (isDouble) {
       kind = "double";
       vy = DOUBLE_JUMP_V;
@@ -568,6 +658,7 @@
 
   function dive() {
     if (state !== "playing") return;
+    if (!currentChar().canDive) return;
     if (player.onGround) return;
     if (player.jumpsLeft > 0) return;
     if (player.diving) return;
@@ -723,6 +814,32 @@
     }
 
     if (item.type === "feather") {
+      // ヘビー桃: 羽はスコアのみ（3段不可）
+      if (selectedCharId === "heavy") {
+        addScore(FEATHER_BONUS_SCORE);
+        sfxPeach();
+        spawnBurst(item.x, item.y, "#7ec8e8", 10);
+        spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(FEATHER_BONUS_SCORE), "#2a7ab0");
+        return;
+      }
+
+      // ウイング桃: ジャンプ回数は増えない。消し去りチャージ
+      if (selectedCharId === "wing") {
+        if (player.feather) {
+          addScore(FEATHER_BONUS_SCORE);
+          sfxPeach();
+          spawnBurst(item.x, item.y, "#7ec8e8", 10);
+          spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(FEATHER_BONUS_SCORE), "#2a7ab0");
+        } else {
+          player.feather = true;
+          syncFeatherHud();
+          sfxFeather();
+          spawnBurst(item.x, item.y, "#ffd24a", 14);
+          spawnFloatText(item.x, item.y - 20, "消し去りチャージ！", "#5a8ad0");
+        }
+        return;
+      }
+
       if (player.feather) {
         addScore(FEATHER_BONUS_SCORE);
         sfxPeach();
@@ -885,11 +1002,26 @@
       return;
     }
 
+    if (player.invuln > 0) player.invuln = Math.max(0, player.invuln - dt);
+
+    // スピン桃: 上昇中のみ回転
+    if (selectedCharId === "spin" && !player.onGround && player.vy < 0) {
+      player.spinAngle += dt * 14;
+    } else if (player.onGround) {
+      player.spinAngle = 0;
+    }
+
     distance += speed * dt;
     const distScore = Math.floor(distance / 10);
     if (distScore > lastDistScore) {
+      const rawGain = distScore - lastDistScore;
       if (distScore % 50 === 0) sfxScore();
-      addScore(distScore - lastDistScore);
+      distScoreAcc += rawGain * currentChar().distMult;
+      const whole = Math.floor(distScoreAcc);
+      if (whole > 0) {
+        addScore(whole);
+        distScoreAcc -= whole;
+      }
       lastDistScore = distScore;
     }
 
@@ -898,14 +1030,16 @@
 
     const overHole =
       !debugMode &&
+      !player.wingClear &&
       obstacles.some(
         (o) =>
+          !o.blown &&
           o.type === "hole" &&
           player.x + player.r * 0.35 > o.x &&
           player.x - player.r * 0.35 < o.x + o.w
       );
 
-    const fallAirJumps = player.feather ? 2 : 1;
+    const fallAirJumps = Math.max(0, maxJumps() - 1);
 
     if (player.y >= GROUND_Y && !overHole) {
       player.y = GROUND_Y;
@@ -916,6 +1050,8 @@
       }
       player.onGround = true;
       player.diving = false;
+      player.wingClear = false;
+      player.spinAngle = 0;
       player.jumpsLeft = maxJumps();
     } else if (overHole && player.y >= GROUND_Y - 2) {
       if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
@@ -955,6 +1091,18 @@
 
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
+
+      if (o.blown) {
+        o.x += (o.bvx || 0) * dt;
+        o.y += (o.bvy || 0) * dt;
+        o.bvy = (o.bvy || 0) + 900 * dt;
+        o.spin = (o.spin || 0) + dt * 10;
+        if (o.x > W + 120 || o.y > H + 80 || o.x < -160) {
+          obstacles.splice(i, 1);
+        }
+        continue;
+      }
+
       o.x -= speed * dt;
       if (o.type === "bird") {
         o.bob += dt * 4;
@@ -972,9 +1120,21 @@
         continue;
       }
 
-      if (!debugMode && hitsPlayer(o)) {
-        endGame();
-        return;
+      if (debugMode) continue;
+
+      if (o.type === "hole") {
+        if (player.wingClear && overlapsHole(o)) {
+          destroyObstacle(o, 200, "#5a8ad0");
+        }
+        continue;
+      }
+
+      if (hitsPlayer(o)) {
+        const outcome = resolveObstacleHit(o);
+        if (outcome === "die") {
+          endGame();
+          return;
+        }
       }
     }
 
@@ -1000,6 +1160,78 @@
         items.splice(i, 1);
       }
     }
+  }
+
+  function overlapsHole(o) {
+    return (
+      o.type === "hole" &&
+      player.x + player.r * 0.4 > o.x &&
+      player.x - player.r * 0.4 < o.x + o.w &&
+      player.y > GROUND_Y - player.r * 1.2
+    );
+  }
+
+  function isSpinAscending() {
+    return selectedCharId === "spin" && !player.onGround && player.vy < 0;
+  }
+
+  function destroyObstacle(o, points, color) {
+    const ox = o.x + (o.w || 20) * 0.5;
+    const oy =
+      o.type === "bird"
+        ? (o.drawY != null ? o.drawY : o.y) - (o.h || 20) * 0.5
+        : o.y - (o.h || 20) * 0.5;
+    spawnBurst(ox, oy, color || "#ffd24a", 16);
+    if (points > 0) {
+      addScore(points);
+      sfxPeach();
+      spawnFloatText(ox, oy - 10, "+" + scoreGainLabel(points), color || "#e85a7a");
+    }
+    if (o.type === "hole") {
+      const idx = obstacles.indexOf(o);
+      if (idx !== -1) obstacles.splice(idx, 1);
+      return;
+    }
+    o.blown = true;
+    o.bvx = 420 + Math.random() * 260;
+    o.bvy = -320 - Math.random() * 220;
+    o.spin = 0;
+  }
+
+  /** @returns {"die"|"ok"} */
+  function resolveObstacleHit(o) {
+    if (player.invuln > 0) return "ok";
+
+    // ウイング桃消し去り
+    if (player.wingClear) {
+      destroyObstacle(o, 200, "#5a8ad0");
+      return "ok";
+    }
+
+    // スピン桃: 上昇スピン中は吹き飛ばし
+    if (isSpinAscending()) {
+      destroyObstacle(o, 100, "#3a9fd0");
+      return "ok";
+    }
+
+    // ヘビー桃: 急降下中は破壊
+    if (selectedCharId === "heavy" && player.diving) {
+      destroyObstacle(o, 100, "#6a6a6a");
+      return "ok";
+    }
+
+    // ノーマル桃: 1回ガード（穴以外）
+    if (selectedCharId === "normal" && player.shield > 0) {
+      player.shield -= 1;
+      player.invuln = 0.85;
+      player.squish = 1.35;
+      sfxHit();
+      spawnBurst(player.x, player.y - player.r, "#fff0a0", 14);
+      spawnFloatText(player.x, player.y - player.r - 28, "ガード！", "#c45c1a");
+      return "ok";
+    }
+
+    return "die";
   }
 
   function hitsPlayer(o) {
@@ -1637,10 +1869,21 @@
 
   function drawObstacles() {
     for (const o of obstacles) {
+      ctx.save();
+      if (o.blown) {
+        const cx = o.x + (o.w || 24) * 0.5;
+        const cy = (o.type === "bird" ? (o.drawY != null ? o.drawY : o.y) : o.y) - (o.h || 24) * 0.4;
+        ctx.translate(cx, cy);
+        ctx.rotate(o.spin || 0);
+        ctx.translate(-cx, -cy);
+        ctx.globalAlpha = 0.9;
+        if (o.type === "bird") o.drawY = o.y;
+      }
       if (o.type === "hole") drawHole(o);
       else if (o.type === "rock") drawRock(o);
       else if (o.type === "tree") drawTree(o);
       else if (o.type === "bird") drawBird(o);
+      ctx.restore();
     }
   }
 
@@ -1926,10 +2169,23 @@
     const sx = player.squish;
     const sy = 2 - player.squish;
     const runBob = player.onGround ? Math.sin(animT * speed * 0.04) * 3 : 0;
+    const charId = selectedCharId;
+    const spinning = isSpinAscending();
+
+    const palettes = {
+      normal: { a: "#ffc0d0", b: "#ff8fab", c: "#e85a7a", cleft: "rgba(200, 60, 90, 0.35)", leg: "#e85a7a" },
+      spin: { a: "#c8f0ff", b: "#6ec8f0", c: "#3a9fd0", cleft: "rgba(40, 100, 150, 0.4)", leg: "#3a9fd0" },
+      heavy: { a: "#d8d8d8", b: "#9a9a9a", c: "#5e5e5e", cleft: "rgba(40, 40, 40, 0.45)", leg: "#5e5e5e" },
+      wing: { a: "#ffffff", b: "#f2f5ff", c: "#d0d8ea", cleft: "rgba(120, 140, 180, 0.4)", leg: "#b0b8c8" },
+    };
+    const pal = palettes[charId] || palettes.normal;
 
     ctx.save();
     ctx.translate(x, y - r + runBob);
     ctx.scale(sx, sy);
+    if (player.invuln > 0 && Math.floor(player.invuln * 20) % 2 === 0) {
+      ctx.globalAlpha = 0.45;
+    }
 
     // shadow
     ctx.fillStyle = "rgba(0,0,0,0.18)";
@@ -1937,26 +2193,87 @@
     ctx.ellipse(0, r / sy + 6, r * 0.7, 7, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    if (spinning) ctx.rotate(player.spinAngle);
+
+    // ウイング桃の羽（背面）
+    if (charId === "wing") {
+      const flap = Math.sin(animT * (player.onGround ? 10 : 14)) * 0.25;
+      ctx.fillStyle = "rgba(210, 225, 245, 0.95)";
+      ctx.beginPath();
+      ctx.ellipse(-r * 0.85, -2, 16, 10, -0.5 + flap, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(r * 0.85, -2, 16, 10, 0.5 - flap, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(140, 160, 200, 0.55)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(-r * 0.85, -2, 16, 10, -0.5 + flap, 0, Math.PI * 2);
+      ctx.ellipse(r * 0.85, -2, 16, 10, 0.5 - flap, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // スピン桃のトゲ（背面）
+    if (charId === "spin") {
+      ctx.fillStyle = "#2a7aad";
+      for (let i = 0; i < 7; i++) {
+        const a = -Math.PI * 0.75 + (i / 6) * Math.PI * 0.7;
+        const x1 = Math.cos(a) * (r - 2);
+        const y1 = Math.sin(a) * (r - 2);
+        const x2 = Math.cos(a) * (r + 10);
+        const y2 = Math.sin(a) * (r + 10);
+        const ox = Math.cos(a + Math.PI / 2) * 4;
+        const oy = Math.sin(a + Math.PI / 2) * 4;
+        ctx.beginPath();
+        ctx.moveTo(x1 + ox, y1 + oy);
+        ctx.lineTo(x2, y2);
+        ctx.lineTo(x1 - ox, y1 - oy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
     // body
     const body = ctx.createRadialGradient(-8, -10, 4, 0, 0, r);
-    body.addColorStop(0, "#ffc0d0");
-    body.addColorStop(0.55, "#ff8fab");
-    body.addColorStop(1, "#e85a7a");
+    body.addColorStop(0, pal.a);
+    body.addColorStop(0.55, pal.b);
+    body.addColorStop(1, pal.c);
     ctx.fillStyle = body;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fill();
+    if (charId === "heavy") {
+      // 角ばった胴体
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.75, -r * 0.55);
+      ctx.lineTo(r * 0.75, -r * 0.55);
+      ctx.lineTo(r * 0.95, r * 0.15);
+      ctx.lineTo(r * 0.55, r * 0.9);
+      ctx.lineTo(-r * 0.55, r * 0.9);
+      ctx.lineTo(-r * 0.95, r * 0.15);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // cleft
-    ctx.strokeStyle = "rgba(200, 60, 90, 0.35)";
+    ctx.strokeStyle = pal.cleft;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(0, -r + 4);
     ctx.quadraticCurveTo(-2, -4, 0, 8);
     ctx.stroke();
 
-    // leaf
-    ctx.fillStyle = "#4caf50";
+    // leaf / stem
+    if (charId === "wing") {
+      ctx.fillStyle = "#8fbf7a";
+    } else if (charId === "heavy") {
+      ctx.fillStyle = "#6a7a5a";
+    } else if (charId === "spin") {
+      ctx.fillStyle = "#3d9a6a";
+    } else {
+      ctx.fillStyle = "#4caf50";
+    }
     ctx.beginPath();
     ctx.ellipse(-6, -r + 2, 10, 6, -0.6, 0, Math.PI * 2);
     ctx.fill();
@@ -1992,7 +2309,11 @@
     }
 
     // blush
-    ctx.fillStyle = "rgba(255, 120, 140, 0.45)";
+    ctx.fillStyle = charId === "spin"
+      ? "rgba(100, 180, 220, 0.4)"
+      : charId === "heavy"
+        ? "rgba(140, 140, 140, 0.4)"
+        : "rgba(255, 120, 140, 0.45)";
     ctx.beginPath();
     ctx.ellipse(-14, 4, 5, 3, 0, 0, Math.PI * 2);
     ctx.ellipse(14, 4, 5, 3, 0, 0, Math.PI * 2);
@@ -2008,7 +2329,7 @@
     // legs when running
     if (player.onGround && state === "playing") {
       const leg = Math.sin(animT * speed * 0.05) * 8;
-      ctx.strokeStyle = "#e85a7a";
+      ctx.strokeStyle = pal.leg;
       ctx.lineWidth = 5;
       ctx.lineCap = "round";
       ctx.beginPath();
@@ -2019,12 +2340,31 @@
       ctx.stroke();
     }
 
-    // feather stock glow
+    // feather / clear charge glow
     if (player.feather) {
-      ctx.strokeStyle = "rgba(255, 200, 60, 0.7)";
+      ctx.strokeStyle =
+        charId === "wing" ? "rgba(100, 160, 255, 0.75)" : "rgba(255, 200, 60, 0.7)";
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(0, 0, r + 6 + Math.sin(animT * 6) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // ウイング消し去り中
+    if (player.wingClear) {
+      ctx.strokeStyle = "rgba(80, 140, 255, 0.85)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 10 + Math.sin(animT * 12) * 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // ノーマル桃シールド残あり
+    if (charId === "normal" && player.shield > 0 && state === "playing") {
+      ctx.strokeStyle = "rgba(255, 220, 120, 0.55)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 5, 0, Math.PI * 2);
       ctx.stroke();
     }
 
@@ -2064,7 +2404,7 @@
     return !!(
       target &&
       target.closest &&
-      target.closest("button, a, input, select, label, .panel, .sound-settings, .debug-exit-btn")
+      target.closest("button, a, input, select, label, .panel, .sound-settings, .char-select, .debug-exit-btn")
     );
   }
 
@@ -2131,8 +2471,16 @@
   toggleSfx.addEventListener("click", function (e) { e.stopPropagation(); });
   bgmModeSelect.addEventListener("click", function (e) { e.stopPropagation(); });
 
+  for (let i = 0; i < charButtons.length; i++) {
+    charButtons[i].addEventListener("click", function (e) {
+      e.stopPropagation();
+      setSelectedChar(charButtons[i].getAttribute("data-char"));
+    });
+  }
+
   ensureBgm();
   syncSoundToggles();
+  syncCharSelectUi();
   initDecor();
   showTitle();
   lastTime = performance.now();

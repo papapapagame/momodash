@@ -40,11 +40,32 @@
       <div class="panel title-panel">
         <p class="brand">ももダッシュ</p>
         <p class="tagline">
-          タップでジャンプ！さらにタップで2段ジャンプ！<br>
-          羽を取ると1回だけ3段ジャンプができるよ！<br>
-          2段（3段）ジャンプ後さらにタップで急降下！
+          キャラを選んでスタート！<br>
+          タップでジャンプ（キャラによって能力が違うよ）
         </p>
         <p class="title-best">ハイスコア <span id="title-best-value">0</span></p>
+        <div class="char-select">
+          <span class="sound-field-label">キャラ選択</span>
+          <div class="char-grid" role="listbox" aria-label="キャラクター選択">
+            <button type="button" class="char-btn" data-char="normal" aria-pressed="true">
+              <span class="char-swatch char-swatch-normal" aria-hidden="true"></span>
+              <span class="char-name">ノーマル桃</span>
+            </button>
+            <button type="button" class="char-btn" data-char="spin" aria-pressed="false">
+              <span class="char-swatch char-swatch-spin" aria-hidden="true"></span>
+              <span class="char-name">スピン桃</span>
+            </button>
+            <button type="button" class="char-btn" data-char="heavy" aria-pressed="false">
+              <span class="char-swatch char-swatch-heavy" aria-hidden="true"></span>
+              <span class="char-name">ヘビー桃</span>
+            </button>
+            <button type="button" class="char-btn" data-char="wing" aria-pressed="false">
+              <span class="char-swatch char-swatch-wing" aria-hidden="true"></span>
+              <span class="char-name">ウイング桃</span>
+            </button>
+          </div>
+          <p id="char-desc" class="char-desc"></p>
+        </div>
         <div class="sound-settings">
           <label class="bgm-select-wrap">
             <span class="sound-field-label">BGM</span>

@@ -2073,19 +2073,42 @@
   }
 
   // input
+  function isInteractiveTarget(target) {
+    return !!(
+      target &&
+      target.closest &&
+      target.closest("button, a, input, select, label, .panel, .sound-settings, .debug-exit-btn")
+    );
+  }
+
   function onPointer(e) {
+    if (isInteractiveTarget(e.target)) return;
     e.preventDefault();
+
     if (state === "title") {
+      const rect = canvas.getBoundingClientRect();
+      if (
+        e.clientX < rect.left ||
+        e.clientX > rect.right ||
+        e.clientY < rect.top ||
+        e.clientY > rect.bottom
+      ) {
+        return;
+      }
       const pos = canvasCoords(e);
       if (hitTitlePeach(pos.x, pos.y)) {
         handleTitlePeachTap();
       }
       return;
     }
-    tryAction();
+
+    if (state === "playing") {
+      tryAction();
+    }
   }
 
-  canvas.addEventListener("pointerdown", onPointer);
+  const app = document.getElementById("app");
+  app.addEventListener("pointerdown", onPointer);
   window.addEventListener("keydown", function (e) {
     if (e.code === "Space" || e.code === "ArrowUp" || e.key === " ") {
       e.preventDefault();

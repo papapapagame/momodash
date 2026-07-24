@@ -372,6 +372,17 @@ body {
   margin-bottom: 12px;
 }
 
+.gameover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.gameover-actions .btn {
+  margin-top: 0;
+}
+
 .btn {
   display: block;
   width: 100%;
@@ -618,6 +629,28 @@ body {
 
   .btn.secondary {
     box-shadow: 0 2px 0 rgba(58, 42, 34, 0.12);
+  }
+
+  .gameover-panel .btn {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .gameover-panel {
+    gap: 6px;
+  }
+
+  .gameover-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
+  .gameover-actions .btn {
+    flex: 1;
+    width: auto;
+    margin: 0;
   }
 
   .hint {

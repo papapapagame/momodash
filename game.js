@@ -13,6 +13,10 @@
   const PEACH_SCORE = 100;
   const FEATHER_BONUS_SCORE = 200;
   const BEST_KEY = "momoDashBest";
+  const BGM_KEY = "momoDashBgm";
+  const SFX_KEY = "momoDashSfx";
+  const BGM_SRC = "sounds/bgm.mp3";
+  const BGM_VOLUME = 0.45;
 
   const canvas = document.getElementById("game-canvas");
   const ctx = canvas.getContext("2d");
@@ -31,6 +35,8 @@
   const btnTitle = document.getElementById("btn-title");
   const btnDebugTitle = document.getElementById("btn-debug-title");
   const debugBadge = document.getElementById("debug-badge");
+  const toggleBgm = document.getElementById("toggle-bgm");
+  const toggleSfx = document.getElementById("toggle-sfx");
 
   /** @type {"title"|"playing"|"gameover"} */
   let state = "title";
@@ -38,6 +44,8 @@
   let debugTapCount = 0;
   const DEBUG_TAPS_NEEDED = 10;
   let best = Number(localStorage.getItem(BEST_KEY) || 0);
+  let bgmEnabled = localStorage.getItem(BGM_KEY) !== "0";
+  let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
   let score = 0;
   let distance = 0;
   let lastDistScore = 0;
@@ -62,6 +70,7 @@
   let particles = [];
   let floatTexts = [];
   let audioCtx = null;
+  let bgm = null;
 
   const player = {
     x: PLAYER_X,
@@ -172,8 +181,65 @@
     if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
   }
 
+  function ensureBgm() {
+    if (bgm) return bgm;
+    bgm = new Audio(BGM_SRC);
+    bgm.loop = true;
+    bgm.preload = "auto";
+    bgm.volume = BGM_VOLUME;
+    return bgm;
+  }
+
+  function playBgm(fromStart) {
+    if (!bgmEnabled) {
+      stopBgm();
+      return;
+    }
+    const audio = ensureBgm();
+    audio.volume = BGM_VOLUME;
+    if (fromStart) audio.currentTime = 0;
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(function () {});
+    }
+  }
+
+  function stopBgm() {
+    if (!bgm) return;
+    bgm.pause();
+    bgm.currentTime = 0;
+  }
+
+  function pauseBgm() {
+    if (!bgm) return;
+    bgm.pause();
+  }
+
+  function syncSoundToggles() {
+    toggleBgm.checked = bgmEnabled;
+    toggleSfx.checked = sfxEnabled;
+  }
+
+  function setBgmEnabled(on) {
+    bgmEnabled = !!on;
+    localStorage.setItem(BGM_KEY, bgmEnabled ? "1" : "0");
+    toggleBgm.checked = bgmEnabled;
+    if (state === "playing" && bgmEnabled) {
+      resumeAudio();
+      playBgm(false);
+    } else if (!bgmEnabled) {
+      pauseBgm();
+    }
+  }
+
+  function setSfxEnabled(on) {
+    sfxEnabled = !!on;
+    localStorage.setItem(SFX_KEY, sfxEnabled ? "1" : "0");
+    toggleSfx.checked = sfxEnabled;
+  }
+
   function playTone(freq, duration, type, volume, freqEnd) {
-    if (!audioCtx) return;
+    if (!sfxEnabled || !audioCtx) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     const t = audioCtx.currentTime;
@@ -189,6 +255,7 @@
   }
 
   function sfxJump(kind) {
+    if (!sfxEnabled) return;
     if (kind === "triple") {
       playTone(560, 0.1, "triangle", 0.16, 980);
       playTone(880, 0.1, "sine", 0.12, 1280);
@@ -201,20 +268,24 @@
   }
 
   function sfxHit() {
+    if (!sfxEnabled) return;
     playTone(180, 0.18, "sawtooth", 0.22, 60);
     playTone(90, 0.28, "square", 0.12, 40);
   }
 
   function sfxScore() {
+    if (!sfxEnabled) return;
     playTone(660, 0.06, "sine", 0.08);
   }
 
   function sfxPeach() {
+    if (!sfxEnabled) return;
     playTone(740, 0.08, "sine", 0.14);
     playTone(980, 0.1, "triangle", 0.1, 1200);
   }
 
   function sfxFeather() {
+    if (!sfxEnabled) return;
     playTone(520, 0.08, "sine", 0.12, 760);
     playTone(880, 0.12, "triangle", 0.1, 1400);
   }
@@ -268,6 +339,7 @@
     gameoverScreen.classList.add("hidden");
     hud.classList.add("hidden");
     syncDebugUi();
+    stopBgm();
     resetGame();
     initDecor();
   }
@@ -283,6 +355,7 @@
     gameoverScreen.classList.add("hidden");
     hud.classList.remove("hidden");
     syncDebugUi();
+    playBgm(true);
     lastTime = performance.now();
   }
 
@@ -290,6 +363,7 @@
     if (state !== "playing") return;
     if (debugMode) return;
     state = "gameover";
+    pauseBgm();
     sfxHit();
     shake = 12;
     spawnBurst(player.x, player.y - player.r, "#ff8fab", 18);
@@ -1799,6 +1873,19 @@
     showTitle();
   });
 
+  toggleBgm.addEventListener("change", function () {
+    setBgmEnabled(toggleBgm.checked);
+  });
+  toggleSfx.addEventListener("change", function () {
+    setSfxEnabled(toggleSfx.checked);
+  });
+
+  // Prevent toggle clicks from bubbling oddly on title overlay
+  toggleBgm.addEventListener("click", function (e) { e.stopPropagation(); });
+  toggleSfx.addEventListener("click", function (e) { e.stopPropagation(); });
+
+  ensureBgm();
+  syncSoundToggles();
   initDecor();
   showTitle();
   lastTime = performance.now();

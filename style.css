@@ -167,7 +167,7 @@ body {
 
 .debug-exit-btn {
   position: absolute;
-  top: max(64px, calc(env(safe-area-inset-top) + 56px));
+  top: max(72px, calc(env(safe-area-inset-top) + 64px));
   left: max(12px, env(safe-area-inset-left));
   z-index: 5;
   padding: 10px 14px;
@@ -188,7 +188,7 @@ body {
 
 .debug-badge {
   position: absolute;
-  top: max(64px, calc(env(safe-area-inset-top) + 56px));
+  top: max(72px, calc(env(safe-area-inset-top) + 64px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 5;
@@ -733,7 +733,7 @@ body {
   }
 
   .debug-exit-btn {
-    top: max(4px, env(safe-area-inset-top));
+    top: max(48px, calc(env(safe-area-inset-top) + 42px));
     left: max(8px, env(safe-area-inset-left));
     padding: 6px 10px;
     font-size: 0.75rem;
@@ -741,7 +741,7 @@ body {
   }
 
   .debug-badge {
-    top: max(4px, env(safe-area-inset-top));
+    top: max(48px, calc(env(safe-area-inset-top) + 42px));
     padding: 3px 8px;
     font-size: 9px;
     z-index: 6;

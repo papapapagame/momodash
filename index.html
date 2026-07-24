@@ -20,6 +20,10 @@
         <span class="hud-label">スコア</span>
         <span id="score-value">0</span>
       </div>
+      <div id="feather-hud" class="feather-hud hidden" title="3段ジャンプストック">
+        <span class="feather-icon" aria-hidden="true"></span>
+        <span class="feather-label">3段ジャンプ</span>
+      </div>
       <div class="hud-best">
         <span class="hud-label">ベスト</span>
         <span id="best-value">0</span>
@@ -29,12 +33,15 @@
     <div id="title-screen" class="overlay">
       <div class="panel title-panel">
         <p class="brand">ももダッシュ</p>
-        <p class="tagline">ワンボタンで二段ジャンプ！穴・鳥・岩をよけろ</p>
+        <p class="tagline">ワンボタンで二段ジャンプ！桃でスコア、羽で3段ジャンプ</p>
         <p class="title-best">ハイスコア <span id="title-best-value">0</span></p>
         <button id="btn-start" class="btn primary" type="button">スタート</button>
         <p class="hint">スペース / クリック / タップ</p>
       </div>
     </div>
+
+    <button id="btn-debug-title" class="debug-exit-btn hidden" type="button">タイトルへ</button>
+    <div id="debug-badge" class="debug-badge hidden">DEBUG</div>
 
     <div id="gameover-screen" class="overlay hidden">
       <div class="panel gameover-panel">

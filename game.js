@@ -468,6 +468,7 @@
     invuln: 0,
     birdKills: 0,
     yuzuGuard: 0,
+    fallingInHole: false,
   };
 
   function syncBestDisplay() {
@@ -856,6 +857,7 @@
     player.invuln = 0;
     player.birdKills = 0;
     player.yuzuGuard = 0;
+    player.fallingInHole = false;
     player.jumpsLeft = maxJumps();
     setScore(0);
     syncBestDisplay();
@@ -1062,12 +1064,9 @@
   }
 
   function nextObstacleSpawnDelay() {
-    // EASY・穴のみ区間: 間隔を広くして走りやすいように
+    // EASY・穴のみ区間だけ間隔を広げる（2000以降は通常と同じ）
     if (selectedMode === "easy" && score < 2000) {
       return 2.4 + Math.random() * 1.1;
-    }
-    if (selectedMode === "easy") {
-      return Math.max(0.95, 1.75 - difficultyFactor() * 0.55) + Math.random() * 0.5;
     }
     return Math.max(0.55, 1.55 - difficultyFactor() * 0.9) + Math.random() * 0.45;
   }
@@ -1405,20 +1404,18 @@
     player.vy += GRAVITY * dt;
     player.y += player.vy * dt;
 
-    const overHole =
-      !debugMode &&
-      selectedCharId !== "wing" &&
-      obstacles.some(
-        (o) =>
-          !o.blown &&
-          o.type === "hole" &&
-          player.x + player.r * 0.35 > o.x &&
-          player.x - player.r * 0.35 < o.x + o.w
-      );
+    // 障害物を先に動かしてから穴判定（高速時のすり抜け防止）
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      if (o.blown) continue;
+      o.x -= speed * dt;
+    }
+
+    const overHole = isPlayerOverHole(dt);
 
     const fallAirJumps = Math.max(0, maxJumps() - 1);
 
-    if (player.y >= GROUND_Y && !overHole) {
+    if (player.y >= GROUND_Y && !overHole && !player.fallingInHole) {
       player.y = GROUND_Y;
       player.vy = 0;
       if (!player.onGround) {
@@ -1428,8 +1425,9 @@
       player.onGround = true;
       player.diving = false;
       player.spinAngle = 0;
+      player.fallingInHole = false;
       player.jumpsLeft = maxJumps();
-    } else if (overHole && player.y >= GROUND_Y - 2) {
+    } else if (player.fallingInHole || (overHole && player.y >= GROUND_Y - 2)) {
       // ヘビー桃: 羽所持中の急降下着地なら穴を破壊して着地
       if (selectedCharId === "heavy" && player.diving && player.feather) {
         smashHolesUnderPlayer();
@@ -1443,6 +1441,7 @@
         player.onGround = true;
         player.diving = false;
         player.spinAngle = 0;
+        player.fallingInHole = false;
         player.jumpsLeft = maxJumps();
       } else if (selectedCharId === "yuzu" && player.yuzuGuard > 0) {
         // ゆずりんご無敵: 落とし穴ダメージ無効
@@ -1458,8 +1457,10 @@
         player.onGround = true;
         player.diving = false;
         player.spinAngle = 0;
+        player.fallingInHole = false;
         player.jumpsLeft = maxJumps();
       } else {
+        player.fallingInHole = true;
         if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
         player.onGround = false;
         if (player.y > GROUND_Y + 60) {
@@ -1468,6 +1469,10 @@
         }
       }
     } else {
+      // 穴から上へジャンプで脱出した場合は落下状態を解除
+      if (player.fallingInHole && !overHole && player.y < GROUND_Y - 12) {
+        player.fallingInHole = false;
+      }
       if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
       player.onGround = false;
     }
@@ -1512,7 +1517,6 @@
         continue;
       }
 
-      o.x -= speed * dt;
       if (o.type === "bird") {
         const bobSpeed = o.bobSpeed != null ? o.bobSpeed : 4;
         const bobAmp = o.bobAmp != null ? o.bobAmp : 10;
@@ -1583,6 +1587,27 @@
         destroyObstacle(o, 0, "#6a6a6a");
       }
     }
+  }
+
+  /** 穴の上判定（高速時は前フレーム位置も見てすり抜けを防ぐ） */
+  function isPlayerOverHole(dt) {
+    if (debugMode || selectedCharId === "wing") return false;
+    const half = player.r * 0.45;
+    const left = player.x - half;
+    const right = player.x + half;
+    const move = speed * dt;
+    for (let i = 0; i < obstacles.length; i++) {
+      const o = obstacles[i];
+      if (o.blown || o.type !== "hole") continue;
+      // 今フレーム位置
+      if (right > o.x && left < o.x + o.w) return true;
+      // 移動前〜現在のスイープ（穴がプレイヤーを飛び越えた場合）
+      const prevX = o.x + move;
+      const sweepLeft = Math.min(o.x, prevX);
+      const sweepRight = Math.max(o.x + o.w, prevX + o.w);
+      if (right > sweepLeft && left < sweepRight) return true;
+    }
+    return false;
   }
 
   function isSpinAscending() {

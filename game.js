@@ -15,6 +15,7 @@
   const BEST_KEY = "momoDashBest";
   const BGM_KEY = "momoDashBgm";
   const SFX_KEY = "momoDashSfx";
+  // index.html / game.js と同じ階層の sounds/bgm.mp3（大文字小文字もこの通り）
   const BGM_SRC = "sounds/bgm.mp3";
   const BGM_VOLUME = 0.45;
 
@@ -181,12 +182,56 @@
     if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
   }
 
+  /** game.js と同じディレクトリを基準に絶対URLへ解決（GitHub Pagesのサブパスでも404回避） */
+  function resolveBgmUrl() {
+    let base = document.baseURI || window.location.href;
+    const scripts = document.getElementsByTagName("script");
+    for (let i = scripts.length - 1; i >= 0; i--) {
+      const raw = scripts[i].getAttribute("src");
+      if (!raw) continue;
+      if (!/(^|\/)game\.js(\?|#|$)/i.test(raw)) continue;
+      const scriptUrl = new URL(raw, document.baseURI || window.location.href);
+      base = scriptUrl.href.replace(/game\.js([?#].*)?$/i, "");
+      break;
+    }
+    return new URL(BGM_SRC, base).href;
+  }
+
   function ensureBgm() {
     if (bgm) return bgm;
-    bgm = new Audio(BGM_SRC);
+
+    const url = resolveBgmUrl();
+    console.log("[BGM] BGM_SRC:", BGM_SRC);
+    console.log("[BGM] resolved Audio URL:", url);
+    console.log("[BGM] location.href:", window.location.href);
+
+    bgm = new Audio();
     bgm.loop = true;
     bgm.preload = "auto";
     bgm.volume = BGM_VOLUME;
+    // iPhone Safari
+    bgm.setAttribute("playsinline", "true");
+    bgm.playsInline = true;
+
+    bgm.addEventListener("loadeddata", function () {
+      console.log("[BGM] loaded OK:", bgm.currentSrc || bgm.src);
+    });
+
+    bgm.addEventListener("error", function () {
+      const mediaError = bgm.error;
+      console.error("[BGM] failed to load audio", {
+        url: url,
+        src: bgm.src,
+        currentSrc: bgm.currentSrc,
+        code: mediaError ? mediaError.code : null,
+        message: mediaError ? mediaError.message : null,
+        networkState: bgm.networkState,
+        readyState: bgm.readyState,
+      });
+    });
+
+    bgm.src = url;
+    bgm.load();
     return bgm;
   }
 
@@ -195,19 +240,50 @@
       stopBgm();
       return;
     }
+
+    // ユーザー操作（スタート等）の直後に呼ぶこと（iPhone Safari対策）
     const audio = ensureBgm();
     audio.volume = BGM_VOLUME;
-    if (fromStart) audio.currentTime = 0;
+
+    if (fromStart) {
+      try {
+        audio.currentTime = 0;
+      } catch (err) {
+        console.error("[BGM] currentTime reset failed:", err);
+      }
+    }
+
     const playPromise = audio.play();
-    if (playPromise && typeof playPromise.catch === "function") {
-      playPromise.catch(function () {});
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise
+        .then(function () {
+          console.log("[BGM] playing:", audio.currentSrc || audio.src);
+        })
+        .catch(function (err) {
+          console.error("[BGM] Audio.play() rejected:", err);
+          // 読み込み完了後に1回リトライ（操作直後にunlock済みの要素を再利用）
+          const retry = function () {
+            audio.removeEventListener("canplay", retry);
+            if (state !== "playing" || !bgmEnabled) return;
+            audio.play().then(function () {
+              console.log("[BGM] playing after canplay retry");
+            }).catch(function (retryErr) {
+              console.error("[BGM] Audio.play() retry rejected:", retryErr);
+            });
+          };
+          audio.addEventListener("canplay", retry);
+        });
     }
   }
 
   function stopBgm() {
     if (!bgm) return;
     bgm.pause();
-    bgm.currentTime = 0;
+    try {
+      bgm.currentTime = 0;
+    } catch (err) {
+      console.error("[BGM] stop currentTime reset failed:", err);
+    }
   }
 
   function pauseBgm() {
@@ -345,6 +421,7 @@
   }
 
   function startGame(asDebug) {
+    // ユーザー操作起点で AudioContext / BGM を開始（iPhone Safari）
     resumeAudio();
     debugMode = !!asDebug;
     debugTapCount = 0;

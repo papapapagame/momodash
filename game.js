@@ -43,7 +43,7 @@
     heavy: {
       id: "heavy",
       name: "ヘビー桃",
-      desc: "急降下中に接触した落とし穴以外の障害物を破壊してスコアにするぞ！急降下の着地が落とし穴なら穴も壊せる！ただし羽を取っても3段ジャンプは出来ない",
+      desc: "急降下中に接触した落とし穴以外の障害物を破壊してスコアにするぞ！羽を持っているときだけ、急降下の着地が落とし穴でも穴を壊せる！ただし羽でも3段ジャンプは出来ない",
       distMult: 0.8,
       canDive: true,
     },
@@ -180,6 +180,9 @@
     if (selectedCharId === "wing") {
       if (label) label.textContent = "急降下×" + player.diveCharges;
       featherHud.classList.toggle("hidden", player.diveCharges <= 0);
+    } else if (selectedCharId === "heavy") {
+      if (label) label.textContent = "穴破壊";
+      featherHud.classList.toggle("hidden", !player.feather);
     } else {
       if (label) label.textContent = "3段ジャンプ";
       featherHud.classList.toggle("hidden", !player.feather);
@@ -818,12 +821,20 @@
     }
 
     if (item.type === "feather") {
-      // ヘビー桃: 羽はスコアのみ（3段不可）
+      // ヘビー桃: 3段不可。羽は穴破壊チャージ
       if (selectedCharId === "heavy") {
-        addScore(FEATHER_BONUS_SCORE);
-        sfxPeach();
-        spawnBurst(item.x, item.y, "#7ec8e8", 10);
-        spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(FEATHER_BONUS_SCORE), "#2a7ab0");
+        if (player.feather) {
+          addScore(FEATHER_BONUS_SCORE);
+          sfxPeach();
+          spawnBurst(item.x, item.y, "#7ec8e8", 10);
+          spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(FEATHER_BONUS_SCORE), "#2a7ab0");
+        } else {
+          player.feather = true;
+          syncFeatherHud();
+          sfxFeather();
+          spawnBurst(item.x, item.y, "#ffd24a", 14);
+          spawnFloatText(item.x, item.y - 20, "穴破壊チャージ！", "#6a6a6a");
+        }
         return;
       }
 
@@ -1058,9 +1069,11 @@
       player.spinAngle = 0;
       player.jumpsLeft = maxJumps();
     } else if (overHole && player.y >= GROUND_Y - 2) {
-      // ヘビー桃: 急降下の着地が穴なら破壊して着地
-      if (selectedCharId === "heavy" && player.diving) {
+      // ヘビー桃: 羽所持中の急降下着地なら穴を破壊して着地
+      if (selectedCharId === "heavy" && player.diving && player.feather) {
         smashHolesUnderPlayer();
+        player.feather = false;
+        syncFeatherHud();
         player.y = GROUND_Y;
         player.vy = 0;
         player.squish = 0.45;

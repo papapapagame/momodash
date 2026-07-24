@@ -622,8 +622,23 @@
     return Math.min(1, distance / 3500);
   }
 
+  /** 表示・移動速度用のパーセント（100起算、上限なし） */
+  function speedPercent() {
+    if (score < 10000) {
+      return 100 + difficultyFactor() * 100;
+    }
+    if (score < 15000) {
+      // 10000→200%, 15000→250%
+      return 200 + ((score - 10000) / 5000) * 50;
+    }
+    // 15000以降: 10000スコアごとに +50%（上限なし）
+    return 250 + ((score - 15000) / 10000) * 50;
+  }
+
   function currentSpeed() {
-    return 280 + difficultyFactor() * 320;
+    const pct = speedPercent();
+    // 100%→280, 200%→600（従来どおり）
+    return 280 + ((pct - 100) / 100) * 320;
   }
 
   function spawnObstacle() {
@@ -2025,15 +2040,19 @@
   }
 
   function drawSpeedBadge() {
-    const pct = Math.floor(100 + difficultyFactor() * 100);
+    const pct = Math.floor(speedPercent());
+    const label = "速度 " + pct + "%";
+    ctx.font = "700 14px 'M PLUS Rounded 1c', sans-serif";
+    const textW = ctx.measureText(label).width;
+    const boxW = Math.max(100, textW + 24);
+    const boxX = W - 18 - boxW;
     ctx.fillStyle = "rgba(255,248,240,0.85)";
     ctx.beginPath();
-    roundRect(ctx, W - 118, 16, 100, 28, 8);
+    roundRect(ctx, boxX, 16, boxW, 28, 8);
     ctx.fill();
     ctx.fillStyle = "#3a2a22";
-    ctx.font = "700 14px 'M PLUS Rounded 1c', sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("速度 " + pct + "%", W - 68, 35);
+    ctx.fillText(label, boxX + boxW / 2, 35);
   }
 
   function roundRect(c, x, y, w, h, r) {

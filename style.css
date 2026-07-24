@@ -558,6 +558,10 @@ body {
   opacity: 0.85;
 }
 
+.fireworks-toggle {
+  width: 100%;
+}
+
 .hint {
   margin-top: 14px;
   font-size: 0.8rem;
@@ -890,6 +894,11 @@ body {
     flex: 0 0 auto;
     font-size: 0.75rem;
     gap: 6px;
+  }
+
+  .fireworks-toggle {
+    flex: 1 1 100%;
+    width: auto;
   }
 
   .sound-toggle .switch {

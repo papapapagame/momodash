@@ -18,6 +18,7 @@
   const MODE_KEY = "momoDashMode";
   const BGM_MODE_KEY = "momoDashBgmMode";
   const SFX_KEY = "momoDashSfx";
+  const FIREWORKS_KEY = "momoDashFireworks";
   const CHAR_KEY = "momoDashChar";
   const BGM_VOLUME = 0.45;
   const BGM_TRACKS = [
@@ -99,6 +100,7 @@
   const debugBadge = document.getElementById("debug-badge");
   const bgmModeSelect = document.getElementById("bgm-mode");
   const toggleSfx = document.getElementById("toggle-sfx");
+  const toggleFireworks = document.getElementById("toggle-fireworks");
 
   /** @type {"title"|"playing"|"gameover"} */
   let state = "title";
@@ -109,6 +111,7 @@
   let unlocks = { yuzu: false, hakase: false };
   let bgmMode = loadBgmMode();
   let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
+  let fireworksEnabled = localStorage.getItem(FIREWORKS_KEY) !== "0";
   let selectedCharId = loadSelectedChar();
   let selectedMode = loadSelectedMode();
   /** @type {{phase:"idle"|"spin"|"heavy"|"wing_yuzu"|"wing_hakase", count:number}} */
@@ -731,6 +734,7 @@
   function syncSoundToggles() {
     bgmModeSelect.value = bgmMode;
     toggleSfx.checked = sfxEnabled;
+    if (toggleFireworks) toggleFireworks.checked = fireworksEnabled;
   }
 
   function setBgmMode(mode) {
@@ -754,6 +758,16 @@
     sfxEnabled = !!on;
     localStorage.setItem(SFX_KEY, sfxEnabled ? "1" : "0");
     toggleSfx.checked = sfxEnabled;
+  }
+
+  function setFireworksEnabled(on) {
+    fireworksEnabled = !!on;
+    localStorage.setItem(FIREWORKS_KEY, fireworksEnabled ? "1" : "0");
+    if (toggleFireworks) toggleFireworks.checked = fireworksEnabled;
+    if (!fireworksEnabled) {
+      fireworks = [];
+      fireworkTimer = 0;
+    }
   }
 
   function playTone(freq, duration, type, volume, freqEnd) {
@@ -1310,7 +1324,7 @@
         if (p.x + p.r * 2 < -60) p.x = W + p.r + Math.random() * 80;
       }
 
-      if (tier >= 5) {
+      if (tier >= 5 && fireworksEnabled) {
         fireworkTimer += dt;
         if (fireworkTimer >= 0.45) {
           fireworkTimer = 0;
@@ -1322,47 +1336,49 @@
       }
     }
 
-    for (let i = fireworks.length - 1; i >= 0; i--) {
-      const fw = fireworks[i];
-      fw.age += dt;
-      if (fw.phase === "rise") {
-        fw.y += fw.vy * dt;
-        fw.vy += 90 * dt;
-        fw.trail.push({ x: fw.x, y: fw.y, life: 0.35 });
-        for (let t = fw.trail.length - 1; t >= 0; t--) {
-          fw.trail[t].life -= dt;
-          if (fw.trail[t].life <= 0) fw.trail.splice(t, 1);
-        }
-        if (fw.y <= fw.burstY) {
-          fw.phase = "burst";
-          fw.age = 0;
-          fw.flash = 1;
-          spawnFireworkBurst(fw);
-          fw.secondaryAt = Math.random() < 0.55 ? 0.1 + Math.random() * 0.12 : null;
-        }
-      } else {
-        if (fw.flash > 0) fw.flash = Math.max(0, fw.flash - dt * 3.5);
-        if (fw.secondaryAt != null) {
-          fw.secondaryAt -= dt;
-          if (fw.secondaryAt <= 0) {
-            fw.secondaryAt = null;
-            spawnFireworkBurst(fw, true);
+    if (fireworksEnabled) {
+      for (let i = fireworks.length - 1; i >= 0; i--) {
+        const fw = fireworks[i];
+        fw.age += dt;
+        if (fw.phase === "rise") {
+          fw.y += fw.vy * dt;
+          fw.vy += 90 * dt;
+          fw.trail.push({ x: fw.x, y: fw.y, life: 0.35 });
+          for (let t = fw.trail.length - 1; t >= 0; t--) {
+            fw.trail[t].life -= dt;
+            if (fw.trail[t].life <= 0) fw.trail.splice(t, 1);
           }
-        }
-        for (const spark of fw.sparks) {
-          spark.x += spark.vx * dt;
-          spark.y += spark.vy * dt;
-          spark.vy += spark.grav * dt;
-          spark.vx *= 1 - 0.55 * dt;
-          spark.vy *= 1 - 0.15 * dt;
-          spark.life -= dt;
-          if (spark.trail) {
-            spark.trail.push({ x: spark.x, y: spark.y });
-            if (spark.trail.length > 6) spark.trail.shift();
+          if (fw.y <= fw.burstY) {
+            fw.phase = "burst";
+            fw.age = 0;
+            fw.flash = 1;
+            spawnFireworkBurst(fw);
+            fw.secondaryAt = Math.random() < 0.55 ? 0.1 + Math.random() * 0.12 : null;
           }
+        } else {
+          if (fw.flash > 0) fw.flash = Math.max(0, fw.flash - dt * 3.5);
+          if (fw.secondaryAt != null) {
+            fw.secondaryAt -= dt;
+            if (fw.secondaryAt <= 0) {
+              fw.secondaryAt = null;
+              spawnFireworkBurst(fw, true);
+            }
+          }
+          for (const spark of fw.sparks) {
+            spark.x += spark.vx * dt;
+            spark.y += spark.vy * dt;
+            spark.vy += spark.grav * dt;
+            spark.vx *= 1 - 0.55 * dt;
+            spark.vy *= 1 - 0.15 * dt;
+            spark.life -= dt;
+            if (spark.trail) {
+              spark.trail.push({ x: spark.x, y: spark.y });
+              if (spark.trail.length > 6) spark.trail.shift();
+            }
+          }
+          fw.sparks = fw.sparks.filter(function (s) { return s.life > 0; });
+          if (fw.sparks.length === 0 && fw.age > 0.35) fireworks.splice(i, 1);
         }
-        fw.sparks = fw.sparks.filter(function (s) { return s.life > 0; });
-        if (fw.sparks.length === 0 && fw.age > 0.35) fireworks.splice(i, 1);
       }
     }
 
@@ -2157,7 +2173,7 @@
     drawPlanets();
     drawShootingStars();
 
-    if (tier >= 5) {
+    if (tier >= 5 && fireworksEnabled) {
       drawFireworks();
     }
   }
@@ -3313,12 +3329,20 @@
   toggleSfx.addEventListener("change", function () {
     setSfxEnabled(toggleSfx.checked);
   });
+  if (toggleFireworks) {
+    toggleFireworks.addEventListener("change", function () {
+      setFireworksEnabled(toggleFireworks.checked);
+    });
+  }
   bgmModeSelect.addEventListener("change", function () {
     setBgmMode(bgmModeSelect.value);
   });
 
   // Prevent toggle/select clicks from bubbling oddly on title overlay
   toggleSfx.addEventListener("click", function (e) { e.stopPropagation(); });
+  if (toggleFireworks) {
+    toggleFireworks.addEventListener("click", function (e) { e.stopPropagation(); });
+  }
   bgmModeSelect.addEventListener("click", function (e) { e.stopPropagation(); });
 
   for (let i = 0; i < charButtons.length; i++) {

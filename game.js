@@ -827,6 +827,7 @@
     speed = 280;
     spawnTimer = 0;
     nextSpawn = 1.2;
+    if (selectedMode === "easy") nextSpawn = 2.6;
     itemSpawnTimer = 0;
     nextItemSpawn = 1.4;
     obstacles = [];
@@ -1060,6 +1061,17 @@
     if (speedEl) speedEl.textContent = Math.floor(speedPercent()) + "%";
   }
 
+  function nextObstacleSpawnDelay() {
+    // EASY・穴のみ区間: 間隔を広くして走りやすいように
+    if (selectedMode === "easy" && score < 2000) {
+      return 2.4 + Math.random() * 1.1;
+    }
+    if (selectedMode === "easy") {
+      return Math.max(0.95, 1.75 - difficultyFactor() * 0.55) + Math.random() * 0.5;
+    }
+    return Math.max(0.55, 1.55 - difficultyFactor() * 0.9) + Math.random() * 0.45;
+  }
+
   function spawnObstacle() {
     const d = difficultyFactor();
     let types;
@@ -1094,9 +1106,12 @@
         y: GROUND_Y,
       });
     } else if (type === "hole") {
+      const easyHoleOnly = selectedMode === "easy" && score < 2000;
       obstacles.push({
         ...base,
-        w: 70 + Math.random() * 50 + d * 40,
+        w: easyHoleOnly
+          ? 52 + Math.random() * 28
+          : 70 + Math.random() * 50 + d * 40,
         h: 40,
         y: GROUND_Y + 8,
       });
@@ -1462,9 +1477,11 @@
     spawnTimer += dt;
     if (spawnTimer >= nextSpawn) {
       spawnTimer = 0;
-      nextSpawn = Math.max(0.55, 1.55 - difficultyFactor() * 0.9) + Math.random() * 0.45;
+      nextSpawn = nextObstacleSpawnDelay();
       spawnObstacle();
-      if (difficultyFactor() > 0.5 && Math.random() < 0.28) {
+      // EASYの穴のみ区間は連続スポーンなし
+      if (!(selectedMode === "easy" && score < 2000) &&
+          difficultyFactor() > 0.5 && Math.random() < 0.28) {
         setTimeout(function () {
           if (state === "playing") spawnObstacle();
         }, 220 + Math.random() * 180);

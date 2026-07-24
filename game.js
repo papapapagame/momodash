@@ -68,7 +68,7 @@
     hakase: {
       id: "hakase",
       name: "はかせ",
-      desc: "金色のティラノ！2秒ごとに火の玉を前方発射（羽所持中は1秒間隔）。火の玉は穴以外を破壊して＋100。鳥に当たると下三方向に分裂し、穴も含めて破壊して＋100！3段ジャンプを使うと発射間隔は元に戻るぞ",
+      desc: "金色のティラノ！2秒ごとに火の玉を前方発射（羽所持中は1秒間隔）。通常の火の玉は穴以外を破壊して＋100。桃を取ると前方三方向に特殊火の玉を発射し、穴も破壊できる！3段ジャンプを使うと発射間隔は元に戻るぞ",
       distMult: 1.2,
       canDive: true,
     },
@@ -1174,6 +1174,9 @@
       sfxPeach();
       spawnBurst(item.x, item.y, "#ff8fab", 12);
       spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(PEACH_SCORE), "#e85a7a");
+      if (selectedCharId === "hakase") {
+        spawnHakasePeachFireballs();
+      }
       return;
     }
 
@@ -1704,17 +1707,11 @@
         const o = obstacles[j];
         if (o.blown) continue;
         if (fireballHitsObstacle(f, o)) {
-          if (o.type === "hole" && !f.split) {
+          // 通常火の玉は穴を破壊できない（桃由来のみ可）
+          if (o.type === "hole" && !f.breaksHole) {
             continue;
           }
-          if (o.type === "bird" && !f.split) {
-            const bx = o.x + o.w * 0.5;
-            const by = (o.drawY != null ? o.drawY : o.y) - o.h * 0.5;
-            destroyObstacle(o, 100, "#ff6a20");
-            spawnSplitFireballs(bx, by);
-          } else {
-            destroyObstacle(o, 100, f.split ? "#ff4020" : "#ff8a30");
-          }
+          destroyObstacle(o, 100, f.breaksHole ? "#ff4020" : "#ff8a30");
           hit = true;
           break;
         }
@@ -1723,23 +1720,27 @@
     }
   }
 
-  function spawnFireball(x, y, vx, vy, split) {
+  function spawnFireball(x, y, vx, vy, breaksHole) {
     fireballs.push({
       x: x,
       y: y,
       vx: vx,
       vy: vy,
-      r: split ? 16 : 22,
-      split: !!split,
+      r: breaksHole ? 18 : 22,
+      breaksHole: !!breaksHole,
       life: 2.2,
     });
   }
 
-  function spawnSplitFireballs(x, y) {
-    spawnFireball(x, y, -160, 420, true);
-    spawnFireball(x, y, 0, 460, true);
-    spawnFireball(x, y, 160, 420, true);
-    spawnBurst(x, y, "#ff5020", 18);
+  /** 桃取得時: 前方三方向。通常発射とは独立。穴も破壊可 */
+  function spawnHakasePeachFireballs() {
+    const x = player.x + player.r + 8;
+    const y = player.y - player.r;
+    const speed = 500;
+    spawnFireball(x, y, speed * 0.92, -speed * 0.38, true);
+    spawnFireball(x, y, speed, 0, true);
+    spawnFireball(x, y, speed * 0.92, speed * 0.38, true);
+    spawnBurst(x, y, "#ff6020", 14);
   }
 
   function fireballHitsObstacle(f, o) {

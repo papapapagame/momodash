@@ -226,16 +226,52 @@ body {
   font-size: 1.2rem;
 }
 
-.sound-toggles {
+.sound-settings {
   display: flex;
-  justify-content: center;
-  gap: 18px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   margin-bottom: 16px;
+}
+
+.bgm-select-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  text-align: left;
+  pointer-events: auto;
+}
+
+.sound-field-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.bgm-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid rgba(58, 42, 34, 0.12);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.bgm-select:focus {
+  outline: 2px solid rgba(247, 108, 140, 0.45);
+  outline-offset: 1px;
 }
 
 .sound-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -282,8 +318,7 @@ body {
 }
 
 .sound-toggle-label {
-  min-width: 3.2em;
-  text-align: right;
+  opacity: 0.85;
 }
 
 .hint {

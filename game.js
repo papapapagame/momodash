@@ -13,11 +13,15 @@
   const PEACH_SCORE = 100;
   const FEATHER_BONUS_SCORE = 200;
   const BEST_KEY = "momoDashBest";
-  const BGM_KEY = "momoDashBgm";
+  const BGM_MODE_KEY = "momoDashBgmMode";
   const SFX_KEY = "momoDashSfx";
-  // index.html / game.js と同じ階層の sounds/bgm.mp3（大文字小文字もこの通り）
-  const BGM_SRC = "sounds/bgm.mp3";
   const BGM_VOLUME = 0.45;
+  const BGM_TRACKS = [
+    { file: "sounds/bgm.mp3", label: "ももももラン！" },
+    { file: "sounds/peach-mode.mp3", label: "Peach Mode" },
+    { file: "sounds/peach-dash.mp3", label: "Peach Dash" },
+  ];
+  const BGM_MODE_VALUES = ["0", "1", "2", "sequence", "random", "off"];
 
   const canvas = document.getElementById("game-canvas");
   const ctx = canvas.getContext("2d");
@@ -36,7 +40,7 @@
   const btnTitle = document.getElementById("btn-title");
   const btnDebugTitle = document.getElementById("btn-debug-title");
   const debugBadge = document.getElementById("debug-badge");
-  const toggleBgm = document.getElementById("toggle-bgm");
+  const bgmModeSelect = document.getElementById("bgm-mode");
   const toggleSfx = document.getElementById("toggle-sfx");
 
   /** @type {"title"|"playing"|"gameover"} */
@@ -45,7 +49,7 @@
   let debugTapCount = 0;
   const DEBUG_TAPS_NEEDED = 10;
   let best = Number(localStorage.getItem(BEST_KEY) || 0);
-  let bgmEnabled = localStorage.getItem(BGM_KEY) !== "0";
+  let bgmMode = loadBgmMode();
   let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
   let score = 0;
   let distance = 0;
@@ -72,6 +76,17 @@
   let floatTexts = [];
   let audioCtx = null;
   let bgm = null;
+  let bgmTrackIndex = 0;
+  let bgmEndedBound = false;
+
+  function loadBgmMode() {
+    const raw = localStorage.getItem(BGM_MODE_KEY);
+    if (BGM_MODE_VALUES.indexOf(raw) !== -1) return raw;
+    // 旧ON/OFF設定からの移行
+    const legacy = localStorage.getItem("momoDashBgm");
+    if (legacy === "0") return "off";
+    return "0";
+  }
 
   const player = {
     x: PLAYER_X,
@@ -188,7 +203,7 @@
   }
 
   /** game.js と同じディレクトリを基準に絶対URLへ解決（GitHub Pagesのサブパスでも404回避） */
-  function resolveBgmUrl() {
+  function resolveAssetUrl(relativePath) {
     let base = document.baseURI || window.location.href;
     const scripts = document.getElementsByTagName("script");
     for (let i = scripts.length - 1; i >= 0; i--) {
@@ -199,22 +214,15 @@
       base = scriptUrl.href.replace(/game\.js([?#].*)?$/i, "");
       break;
     }
-    return new URL(BGM_SRC, base).href;
+    return new URL(relativePath, base).href;
   }
 
   function ensureBgm() {
     if (bgm) return bgm;
 
-    const url = resolveBgmUrl();
-    console.log("[BGM] BGM_SRC:", BGM_SRC);
-    console.log("[BGM] resolved Audio URL:", url);
-    console.log("[BGM] location.href:", window.location.href);
-
     bgm = new Audio();
-    bgm.loop = true;
     bgm.preload = "auto";
     bgm.volume = BGM_VOLUME;
-    // iPhone Safari
     bgm.setAttribute("playsinline", "true");
     bgm.playsInline = true;
 
@@ -225,7 +233,6 @@
     bgm.addEventListener("error", function () {
       const mediaError = bgm.error;
       console.error("[BGM] failed to load audio", {
-        url: url,
         src: bgm.src,
         currentSrc: bgm.currentSrc,
         code: mediaError ? mediaError.code : null,
@@ -235,21 +242,47 @@
       });
     });
 
-    bgm.src = url;
-    bgm.load();
+    if (!bgmEndedBound) {
+      bgmEndedBound = true;
+      bgm.addEventListener("ended", function () {
+        if (state !== "playing" || bgmMode !== "sequence") return;
+        bgmTrackIndex = (bgmTrackIndex + 1) % BGM_TRACKS.length;
+        loadBgmTrack(bgmTrackIndex, true);
+        startBgmPlayback(true);
+      });
+    }
+
     return bgm;
   }
 
-  function playBgm(fromStart) {
-    if (!bgmEnabled) {
-      stopBgm();
-      return;
+  function loadBgmTrack(index, shouldLoad) {
+    const track = BGM_TRACKS[index];
+    if (!track) return;
+    const audio = ensureBgm();
+    const url = resolveAssetUrl(track.file);
+    console.log("[BGM] track:", track.label);
+    console.log("[BGM] file:", track.file);
+    console.log("[BGM] resolved Audio URL:", url);
+    console.log("[BGM] location.href:", window.location.href);
+    audio.loop = bgmMode !== "sequence";
+    if (audio.src !== url) {
+      audio.src = url;
+      if (shouldLoad !== false) audio.load();
     }
+  }
 
-    // ユーザー操作（スタート等）の直後に呼ぶこと（iPhone Safari対策）
+  function pickTrackIndexForMode() {
+    if (bgmMode === "off") return -1;
+    if (bgmMode === "sequence") return 0;
+    if (bgmMode === "random") return (Math.random() * BGM_TRACKS.length) | 0;
+    const n = Number(bgmMode);
+    if (n >= 0 && n < BGM_TRACKS.length) return n;
+    return 0;
+  }
+
+  function startBgmPlayback(fromStart) {
     const audio = ensureBgm();
     audio.volume = BGM_VOLUME;
-
     if (fromStart) {
       try {
         audio.currentTime = 0;
@@ -266,10 +299,9 @@
         })
         .catch(function (err) {
           console.error("[BGM] Audio.play() rejected:", err);
-          // 読み込み完了後に1回リトライ（操作直後にunlock済みの要素を再利用）
           const retry = function () {
             audio.removeEventListener("canplay", retry);
-            if (state !== "playing" || !bgmEnabled) return;
+            if (state !== "playing" || bgmMode === "off") return;
             audio.play().then(function () {
               console.log("[BGM] playing after canplay retry");
             }).catch(function (retryErr) {
@@ -279,6 +311,24 @@
           audio.addEventListener("canplay", retry);
         });
     }
+  }
+
+  function playBgm(fromStart) {
+    if (bgmMode === "off") {
+      stopBgm();
+      return;
+    }
+
+    if (fromStart || bgmTrackIndex < 0) {
+      bgmTrackIndex = pickTrackIndexForMode();
+    }
+    if (bgmTrackIndex < 0) {
+      stopBgm();
+      return;
+    }
+
+    loadBgmTrack(bgmTrackIndex, true);
+    startBgmPlayback(!!fromStart);
   }
 
   function stopBgm() {
@@ -297,19 +347,24 @@
   }
 
   function syncSoundToggles() {
-    toggleBgm.checked = bgmEnabled;
+    bgmModeSelect.value = bgmMode;
     toggleSfx.checked = sfxEnabled;
   }
 
-  function setBgmEnabled(on) {
-    bgmEnabled = !!on;
-    localStorage.setItem(BGM_KEY, bgmEnabled ? "1" : "0");
-    toggleBgm.checked = bgmEnabled;
-    if (state === "playing" && bgmEnabled) {
-      resumeAudio();
-      playBgm(false);
-    } else if (!bgmEnabled) {
-      pauseBgm();
+  function setBgmMode(mode) {
+    if (BGM_MODE_VALUES.indexOf(mode) === -1) mode = "0";
+    bgmMode = mode;
+    localStorage.setItem(BGM_MODE_KEY, bgmMode);
+    bgmModeSelect.value = bgmMode;
+    if (state === "playing") {
+      if (bgmMode === "off") {
+        stopBgm();
+      } else {
+        resumeAudio();
+        playBgm(true);
+      }
+    } else {
+      stopBgm();
     }
   }
 
@@ -2003,16 +2058,16 @@
     showTitle();
   });
 
-  toggleBgm.addEventListener("change", function () {
-    setBgmEnabled(toggleBgm.checked);
-  });
   toggleSfx.addEventListener("change", function () {
     setSfxEnabled(toggleSfx.checked);
   });
+  bgmModeSelect.addEventListener("change", function () {
+    setBgmMode(bgmModeSelect.value);
+  });
 
-  // Prevent toggle clicks from bubbling oddly on title overlay
-  toggleBgm.addEventListener("click", function (e) { e.stopPropagation(); });
+  // Prevent toggle/select clicks from bubbling oddly on title overlay
   toggleSfx.addEventListener("click", function (e) { e.stopPropagation(); });
+  bgmModeSelect.addEventListener("click", function (e) { e.stopPropagation(); });
 
   ensureBgm();
   syncSoundToggles();

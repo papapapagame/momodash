@@ -35,11 +35,17 @@
         <p class="brand">ももダッシュ</p>
         <p class="tagline">ワンボタンで二段ジャンプ！桃でスコア、羽で3段ジャンプ</p>
         <p class="title-best">ハイスコア <span id="title-best-value">0</span></p>
-        <div class="sound-toggles">
-          <label class="sound-toggle">
-            <span class="sound-toggle-label">BGM</span>
-            <input id="toggle-bgm" type="checkbox" checked>
-            <span class="switch" aria-hidden="true"></span>
+        <div class="sound-settings">
+          <label class="bgm-select-wrap">
+            <span class="sound-field-label">BGM</span>
+            <select id="bgm-mode" class="bgm-select" aria-label="BGM選択">
+              <option value="0">ももももラン！</option>
+              <option value="1">Peach Mode</option>
+              <option value="2">Peach Dash</option>
+              <option value="sequence">3曲連続</option>
+              <option value="random">ランダム（1曲ループ）</option>
+              <option value="off">BGMなし</option>
+            </select>
           </label>
           <label class="sound-toggle">
             <span class="sound-toggle-label">効果音</span>

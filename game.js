@@ -101,7 +101,12 @@
   }
 
   function addScore(amount) {
-    setScore(score + amount);
+    const gained = amount * (debugMode ? 3 : 1);
+    setScore(score + gained);
+  }
+
+  function scoreGainLabel(base) {
+    return String(base * (debugMode ? 3 : 1));
   }
 
   syncBestDisplay();
@@ -610,7 +615,7 @@
       addScore(PEACH_SCORE);
       sfxPeach();
       spawnBurst(item.x, item.y, "#ff8fab", 12);
-      spawnFloatText(item.x, item.y - 20, "+" + PEACH_SCORE, "#e85a7a");
+      spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(PEACH_SCORE), "#e85a7a");
       return;
     }
 
@@ -619,7 +624,7 @@
         addScore(FEATHER_BONUS_SCORE);
         sfxPeach();
         spawnBurst(item.x, item.y, "#7ec8e8", 10);
-        spawnFloatText(item.x, item.y - 20, "+" + FEATHER_BONUS_SCORE, "#2a7ab0");
+        spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(FEATHER_BONUS_SCORE), "#2a7ab0");
       } else {
         player.feather = true;
         if (player.onGround) {
@@ -1596,8 +1601,42 @@
     const x = o.x;
     const y = o.drawY != null ? o.drawY : o.y;
     const flap = Math.sin(animT * 12 + o.bob) * 10;
+    const needOutline = score >= 10000;
 
-    ctx.fillStyle = "#3d4a5c";
+    function strokeBirdParts() {
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 4;
+      // body
+      ctx.beginPath();
+      ctx.ellipse(x + 18, y, 16, 10, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // wing
+      ctx.beginPath();
+      ctx.moveTo(x + 14, y);
+      ctx.quadraticCurveTo(x + 8, y - 18 - flap, x + 28, y - 4);
+      ctx.closePath();
+      ctx.stroke();
+      // beak
+      ctx.beginPath();
+      ctx.moveTo(x + 32, y);
+      ctx.lineTo(x + 42, y + 2);
+      ctx.lineTo(x + 32, y + 5);
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    if (needOutline) {
+      // soft glow behind bird
+      ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+      ctx.beginPath();
+      ctx.ellipse(x + 18, y - 2, 28, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      strokeBirdParts();
+    }
+
+    ctx.fillStyle = needOutline ? "#5a6a80" : "#3d4a5c";
     ctx.beginPath();
     ctx.ellipse(x + 18, y, 16, 10, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -1607,7 +1646,7 @@
     ctx.moveTo(x + 14, y);
     ctx.quadraticCurveTo(x + 8, y - 18 - flap, x + 28, y - 4);
     ctx.closePath();
-    ctx.fillStyle = "#55667a";
+    ctx.fillStyle = needOutline ? "#7a8aa0" : "#55667a";
     ctx.fill();
 
     // beak
@@ -1627,6 +1666,20 @@
     ctx.beginPath();
     ctx.arc(x + 25, y - 2, 1.5, 0, Math.PI * 2);
     ctx.fill();
+
+    if (needOutline) {
+      // crisp inner outline on top
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x + 18, y, 16, 10, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + 14, y);
+      ctx.quadraticCurveTo(x + 8, y - 18 - flap, x + 28, y - 4);
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 
   function drawItems() {

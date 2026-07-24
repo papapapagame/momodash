@@ -30,6 +30,7 @@
   const hud = document.getElementById("hud");
   const scoreEl = document.getElementById("score-value");
   const bestEl = document.getElementById("best-value");
+  const speedEl = document.getElementById("speed-value");
   const titleBestEl = document.getElementById("title-best-value");
   const featherHud = document.getElementById("feather-hud");
   const titleScreen = document.getElementById("title-screen");
@@ -500,6 +501,7 @@
     titleScreen.classList.add("hidden");
     gameoverScreen.classList.add("hidden");
     hud.classList.remove("hidden");
+    syncSpeedDisplay();
     syncDebugUi();
     playBgm(true);
     lastTime = performance.now();
@@ -641,6 +643,10 @@
     return 280 + ((pct - 100) / 100) * 320;
   }
 
+  function syncSpeedDisplay() {
+    if (speedEl) speedEl.textContent = Math.floor(speedPercent()) + "%";
+  }
+
   function spawnObstacle() {
     const d = difficultyFactor();
     const types = ["rock", "tree", "hole"];
@@ -757,6 +763,7 @@
   function update(dt) {
     animT += dt;
     speed = currentSpeed();
+    syncSpeedDisplay();
     const phase = skyPhase();
 
     for (const c of clouds) {
@@ -1045,10 +1052,7 @@
     }
     drawParticles();
     drawFloatTexts();
-
-    if (state === "playing") {
-      drawSpeedBadge();
-    }
+    if (state === "playing") drawSpeedBadge();
 
     ctx.restore();
   }
@@ -2040,19 +2044,24 @@
   }
 
   function drawSpeedBadge() {
+    // HTML HUD がメイン。横画面でノッチに隠れる場合の保険としてキャンバスにも描く
     const pct = Math.floor(speedPercent());
-    const label = "速度 " + pct + "%";
-    ctx.font = "700 14px 'M PLUS Rounded 1c', sans-serif";
+    const label = "スピード " + pct + "%";
+    ctx.font = "700 15px 'M PLUS Rounded 1c', sans-serif";
     const textW = ctx.measureText(label).width;
-    const boxW = Math.max(100, textW + 24);
-    const boxX = W - 18 - boxW;
-    ctx.fillStyle = "rgba(255,248,240,0.85)";
+    const boxW = Math.max(110, textW + 22);
+    const boxH = 30;
+    const boxX = W - 16 - boxW;
+    const boxY = 52;
+    ctx.fillStyle = "rgba(255,248,240,0.9)";
     ctx.beginPath();
-    roundRect(ctx, boxX, 16, boxW, 28, 8);
+    roundRect(ctx, boxX, boxY, boxW, boxH, 8);
     ctx.fill();
     ctx.fillStyle = "#3a2a22";
     ctx.textAlign = "center";
-    ctx.fillText(label, boxX + boxW / 2, 35);
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, boxX + boxW / 2, boxY + boxH / 2);
+    ctx.textBaseline = "alphabetic";
   }
 
   function roundRect(c, x, y, w, h, r) {

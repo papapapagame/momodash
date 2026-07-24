@@ -29,7 +29,6 @@
   const CHAR_IDS = ["normal", "spin", "heavy", "wing", "yuzu", "hakase"];
   const SECRET_CHAR_IDS = ["yuzu", "hakase"];
   const MODE_IDS = ["easy", "normal", "hard"];
-  const UNLOCK_KEY = "momoDashUnlocks";
   const CHARACTERS = {
     normal: {
       id: "normal",
@@ -69,7 +68,7 @@
     hakase: {
       id: "hakase",
       name: "はかせ",
-      desc: "金色のティラノ！2秒ごとに火の玉を前方発射。火の玉は穴以外を破壊して＋100。鳥に当たると下三方向に分裂し、穴も含めて破壊して＋100！各火の玉は1ヒットで消えるぞ",
+      desc: "金色のティラノ！2秒ごとに火の玉を前方発射（羽所持中は1秒間隔）。火の玉は穴以外を破壊して＋100。鳥に当たると下三方向に分裂し、穴も含めて破壊して＋100！3段ジャンプを使うと発射間隔は元に戻るぞ",
       distMult: 1.2,
       canDive: true,
     },
@@ -107,7 +106,7 @@
   let debugTapCount = 0;
   const DEBUG_TAPS_NEEDED = 10;
   let records = loadRecords();
-  let unlocks = loadUnlocks();
+  let unlocks = { yuzu: false, hakase: false };
   let bgmMode = loadBgmMode();
   let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
   let selectedCharId = loadSelectedChar();
@@ -209,30 +208,12 @@
     localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
   }
 
-  function loadUnlocks() {
-    const data = { yuzu: false, hakase: false };
-    try {
-      const raw = JSON.parse(localStorage.getItem(UNLOCK_KEY) || "null");
-      if (raw) {
-        data.yuzu = !!raw.yuzu;
-        data.hakase = !!raw.hakase;
-      }
-    } catch (e) {
-      /* ignore */
-    }
-    return data;
-  }
-
-  function saveUnlocks() {
-    localStorage.setItem(UNLOCK_KEY, JSON.stringify(unlocks));
-  }
-
   function loadSelectedChar() {
     const raw = localStorage.getItem(CHAR_KEY);
-    if (CHAR_IDS.indexOf(raw) === -1) return "normal";
-    if (raw === "yuzu" && !unlocks.yuzu) return "normal";
-    if (raw === "hakase" && !unlocks.hakase) return "normal";
-    return raw;
+    // 隠しキャラはセッション解禁のみ。起動時は通常キャラに戻す
+    if (raw === "yuzu" || raw === "hakase") return "normal";
+    if (CHAR_IDS.indexOf(raw) !== -1) return raw;
+    return "normal";
   }
 
   function loadSelectedMode() {
@@ -337,9 +318,7 @@
   function unlockSecret(id) {
     if (id === "yuzu" && !unlocks.yuzu) {
       unlocks.yuzu = true;
-      saveUnlocks();
       selectedCharId = "yuzu";
-      localStorage.setItem(CHAR_KEY, "yuzu");
       syncCharSelectUi();
       spawnBurst(player.x, player.y - player.r, "#ffffff", 24);
       spawnFloatText(player.x, player.y - player.r - 40, "ゆずりんご 解禁！", "#555");
@@ -347,15 +326,26 @@
     }
     if (id === "hakase" && !unlocks.hakase) {
       unlocks.hakase = true;
-      saveUnlocks();
       selectedCharId = "hakase";
-      localStorage.setItem(CHAR_KEY, "hakase");
       syncCharSelectUi();
       spawnBurst(player.x, player.y - player.r, "#ffd24a", 24);
       spawnFloatText(player.x, player.y - player.r - 40, "はかせ 解禁！", "#b8860b");
       return true;
     }
     return false;
+  }
+
+  function clearSecretUnlocks() {
+    unlocks.yuzu = false;
+    unlocks.hakase = false;
+    secretTap = { phase: "idle", count: 0 };
+    if (isSecretSlotChar(selectedCharId) && selectedCharId !== "normal") {
+      selectedCharId = "normal";
+    }
+    const stored = localStorage.getItem(CHAR_KEY);
+    if (stored === "yuzu" || stored === "hakase") {
+      localStorage.setItem(CHAR_KEY, "normal");
+    }
   }
 
   function onCharButtonClick(btn) {
@@ -880,6 +870,7 @@
     state = "title";
     debugMode = false;
     debugTapCount = 0;
+    clearSecretUnlocks();
     titleScreen.classList.remove("hidden");
     gameoverScreen.classList.add("hidden");
     hud.classList.add("hidden");
@@ -887,6 +878,7 @@
     stopBgm();
     resetGame();
     initDecor();
+    syncCharSelectUi();
     syncModeRecordsUi();
     syncCharRecordsUi();
     syncBestDisplay();
@@ -1218,6 +1210,7 @@
         } else if (player.jumpsLeft < 2) {
           player.jumpsLeft = 2;
         }
+        if (selectedCharId === "hakase" && fireTimer > 1) fireTimer = 1;
         syncFeatherHud();
         sfxFeather();
         spawnBurst(item.x, item.y, "#ffd24a", 14);
@@ -1672,7 +1665,8 @@
 
   function updateFireballs(dt) {
     fireTimer += dt;
-    if (fireTimer >= 2) {
+    const interval = player.feather ? 1 : 2;
+    if (fireTimer >= interval) {
       fireTimer = 0;
       spawnFireball(player.x + player.r + 8, player.y - player.r, 480, 0, false);
     }

@@ -36,21 +36,21 @@
     spin: {
       id: "spin",
       name: "スピン桃",
-      desc: "ジャンプ上昇中はスピンで落とし穴以外の障害物を吹き飛ばしてスコアにするぞ！ただし急降下は出来なくなる",
+      desc: "ジャンプ上昇中はスピンで落とし穴以外の障害物を吹き飛ばしてスコアにするぞ！急降下もできるぞ！",
       distMult: 0.8,
-      canDive: false,
+      canDive: true,
     },
     heavy: {
       id: "heavy",
       name: "ヘビー桃",
-      desc: "急降下中に接触した落とし穴以外の障害物を破壊してスコアにするぞ！ただし羽を取っても3段ジャンプが出来なくなる",
+      desc: "急降下中に接触した落とし穴以外の障害物を破壊してスコアにするぞ！急降下の着地が落とし穴なら穴も壊せる！ただし羽を取っても3段ジャンプは出来ない",
       distMult: 0.8,
       canDive: true,
     },
     wing: {
       id: "wing",
       name: "ウイング桃",
-      desc: "常に3段ジャンプが出来るし、羽を取った後は3段ジャンプ発動から着地までに接触したすべての障害物を消し去りスコアにするぞ！ただし急降下は出来ないし、スコアの伸びも一番遅い",
+      desc: "常に3段ジャンプができて落とし穴も無効！羽を取ると急降下を2回まで使えるぞ！ただしスコアの伸びは一番遅い",
       distMult: 0.65,
       canDive: false,
     },
@@ -164,7 +164,7 @@
     squish: 1,
     blink: 0,
     shield: 0,
-    wingClear: false,
+    diveCharges: 0,
     spinAngle: 0,
     invuln: 0,
   };
@@ -177,11 +177,13 @@
 
   function syncFeatherHud() {
     const label = featherHud.querySelector(".feather-label");
-    if (label) {
-      label.textContent =
-        selectedCharId === "wing" ? "消し去り" : "3段ジャンプ";
+    if (selectedCharId === "wing") {
+      if (label) label.textContent = "急降下×" + player.diveCharges;
+      featherHud.classList.toggle("hidden", player.diveCharges <= 0);
+    } else {
+      if (label) label.textContent = "3段ジャンプ";
+      featherHud.classList.toggle("hidden", !player.feather);
     }
-    featherHud.classList.toggle("hidden", !player.feather);
   }
 
   function setScore(value) {
@@ -541,7 +543,7 @@
     player.squish = 1;
     player.blink = 0;
     player.shield = selectedCharId === "normal" ? 1 : 0;
-    player.wingClear = false;
+    player.diveCharges = 0;
     player.spinAngle = 0;
     player.invuln = 0;
     player.jumpsLeft = maxJumps();
@@ -624,14 +626,7 @@
       vy = TRIPLE_JUMP_V;
       color = "#a8e8ff";
       burst = 14;
-      if (selectedCharId === "wing") {
-        if (player.feather) {
-          player.wingClear = true;
-          player.feather = false;
-          syncFeatherHud();
-          spawnFloatText(player.x, player.y - player.r - 24, "消し去り！", "#5a8ad0");
-        }
-      } else {
+      if (selectedCharId !== "wing") {
         player.feather = false;
         syncFeatherHud();
       }
@@ -656,9 +651,14 @@
     );
   }
 
+  function canPlayerDive() {
+    if (selectedCharId === "wing") return player.diveCharges > 0;
+    return currentChar().canDive;
+  }
+
   function dive() {
     if (state !== "playing") return;
-    if (!currentChar().canDive) return;
+    if (!canPlayerDive()) return;
     if (player.onGround) return;
     if (player.jumpsLeft > 0) return;
     if (player.diving) return;
@@ -666,6 +666,10 @@
     player.diving = true;
     player.vy = DIVE_V;
     player.squish = 0.55;
+    if (selectedCharId === "wing") {
+      player.diveCharges = Math.max(0, player.diveCharges - 1);
+      syncFeatherHud();
+    }
     sfxDive();
     spawnBurst(player.x, player.y - player.r, "#ffe08a", 12);
   }
@@ -823,19 +827,20 @@
         return;
       }
 
-      // ウイング桃: ジャンプ回数は増えない。消し去りチャージ
+      // ウイング桃: ジャンプ回数は増えない。急降下を2回まで付与
       if (selectedCharId === "wing") {
-        if (player.feather) {
+        const hadCharges = player.diveCharges > 0;
+        player.diveCharges = 2;
+        syncFeatherHud();
+        if (hadCharges) {
           addScore(FEATHER_BONUS_SCORE);
           sfxPeach();
           spawnBurst(item.x, item.y, "#7ec8e8", 10);
           spawnFloatText(item.x, item.y - 20, "+" + scoreGainLabel(FEATHER_BONUS_SCORE), "#2a7ab0");
         } else {
-          player.feather = true;
-          syncFeatherHud();
           sfxFeather();
           spawnBurst(item.x, item.y, "#ffd24a", 14);
-          spawnFloatText(item.x, item.y - 20, "消し去りチャージ！", "#5a8ad0");
+          spawnFloatText(item.x, item.y - 20, "急降下×2！", "#5a8ad0");
         }
         return;
       }
@@ -1030,7 +1035,7 @@
 
     const overHole =
       !debugMode &&
-      !player.wingClear &&
+      selectedCharId !== "wing" &&
       obstacles.some(
         (o) =>
           !o.blown &&
@@ -1050,15 +1055,28 @@
       }
       player.onGround = true;
       player.diving = false;
-      player.wingClear = false;
       player.spinAngle = 0;
       player.jumpsLeft = maxJumps();
     } else if (overHole && player.y >= GROUND_Y - 2) {
-      if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
-      player.onGround = false;
-      if (player.y > GROUND_Y + 60) {
-        endGame();
-        return;
+      // ヘビー桃: 急降下の着地が穴なら破壊して着地
+      if (selectedCharId === "heavy" && player.diving) {
+        smashHolesUnderPlayer();
+        player.y = GROUND_Y;
+        player.vy = 0;
+        player.squish = 0.45;
+        spawnBurst(player.x, GROUND_Y, "#ffe08a", 12);
+        spawnFloatText(player.x, GROUND_Y - 30, "穴破壊！", "#6a6a6a");
+        player.onGround = true;
+        player.diving = false;
+        player.spinAngle = 0;
+        player.jumpsLeft = maxJumps();
+      } else {
+        if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
+        player.onGround = false;
+        if (player.y > GROUND_Y + 60) {
+          endGame();
+          return;
+        }
       }
     } else {
       if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
@@ -1122,12 +1140,7 @@
 
       if (debugMode) continue;
 
-      if (o.type === "hole") {
-        if (player.wingClear && overlapsHole(o)) {
-          destroyObstacle(o, 200, "#5a8ad0");
-        }
-        continue;
-      }
+      if (o.type === "hole") continue;
 
       if (hitsPlayer(o)) {
         const outcome = resolveObstacleHit(o);
@@ -1162,13 +1175,17 @@
     }
   }
 
-  function overlapsHole(o) {
-    return (
-      o.type === "hole" &&
-      player.x + player.r * 0.4 > o.x &&
-      player.x - player.r * 0.4 < o.x + o.w &&
-      player.y > GROUND_Y - player.r * 1.2
-    );
+  function smashHolesUnderPlayer() {
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      if (o.type !== "hole" || o.blown) continue;
+      if (
+        player.x + player.r * 0.4 > o.x &&
+        player.x - player.r * 0.4 < o.x + o.w
+      ) {
+        destroyObstacle(o, 0, "#6a6a6a");
+      }
+    }
   }
 
   function isSpinAscending() {
@@ -1201,12 +1218,6 @@
   /** @returns {"die"|"ok"} */
   function resolveObstacleHit(o) {
     if (player.invuln > 0) return "ok";
-
-    // ウイング桃消し去り
-    if (player.wingClear) {
-      destroyObstacle(o, 200, "#5a8ad0");
-      return "ok";
-    }
 
     // スピン桃: 上昇スピン中は吹き飛ばし
     if (isSpinAscending()) {
@@ -2340,22 +2351,16 @@
       ctx.stroke();
     }
 
-    // feather / clear charge glow
-    if (player.feather) {
+    // feather / dive charge glow
+    if (
+      (charId === "wing" && player.diveCharges > 0) ||
+      (charId !== "wing" && player.feather)
+    ) {
       ctx.strokeStyle =
         charId === "wing" ? "rgba(100, 160, 255, 0.75)" : "rgba(255, 200, 60, 0.7)";
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(0, 0, r + 6 + Math.sin(animT * 6) * 2, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    // ウイング消し去り中
-    if (player.wingClear) {
-      ctx.strokeStyle = "rgba(80, 140, 255, 0.85)";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(0, 0, r + 10 + Math.sin(animT * 12) * 3, 0, Math.PI * 2);
       ctx.stroke();
     }
 

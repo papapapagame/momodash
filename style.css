@@ -386,6 +386,31 @@ body {
   background: radial-gradient(circle at 35% 30%, #ffffff, #f0f4ff 55%, #d8e0f0);
 }
 
+.char-swatch-yuzu {
+  background: radial-gradient(circle at 35% 30%, #ffffff, #f5f5f5 55%, #d8d8d8);
+  box-shadow: inset -2px -2px 0 rgba(0, 0, 0, 0.1);
+}
+
+.char-swatch-yuzu::before,
+.char-swatch-yuzu::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  width: 7px;
+  height: 9px;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 50% 50% 40% 40%;
+}
+
+.char-swatch-yuzu::before { left: 1px; transform: rotate(-20deg); }
+.char-swatch-yuzu::after { right: 1px; transform: rotate(20deg); }
+
+.char-swatch-hakase {
+  background: radial-gradient(circle at 35% 30%, #ffe08a, #e8b020 55%, #b8860b);
+  border-radius: 30% 40% 45% 40%;
+}
+
 .char-swatch-wing::before,
 .char-swatch-wing::after {
   content: "";

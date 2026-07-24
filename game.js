@@ -3,6 +3,8 @@
 
   const W = 960;
   const H = 540;
+  /** 更新のたびに +0.01（表示は Ver.x.xx） */
+  const APP_VERSION = "1.01";
   const GROUND_Y = 420;
   const PLAYER_X = 180;
   const GRAVITY = 2200;
@@ -3365,6 +3367,8 @@
   syncModeRecordsUi();
   syncCharSelectUi();
   syncBestDisplay();
+  const versionEl = document.getElementById("app-version");
+  if (versionEl) versionEl.textContent = "Ver." + APP_VERSION;
   initDecor();
   showTitle();
   lastTime = performance.now();

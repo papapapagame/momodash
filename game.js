@@ -1052,7 +1052,6 @@
     }
     drawParticles();
     drawFloatTexts();
-    if (state === "playing") drawSpeedBadge();
 
     ctx.restore();
   }
@@ -2041,27 +2040,6 @@
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-  }
-
-  function drawSpeedBadge() {
-    // HTML HUD がメイン。横画面でノッチに隠れる場合の保険としてキャンバスにも描く
-    const pct = Math.floor(speedPercent());
-    const label = "スピード " + pct + "%";
-    ctx.font = "700 15px 'M PLUS Rounded 1c', sans-serif";
-    const textW = ctx.measureText(label).width;
-    const boxW = Math.max(110, textW + 22);
-    const boxH = 30;
-    const boxX = W - 16 - boxW;
-    const boxY = 52;
-    ctx.fillStyle = "rgba(255,248,240,0.9)";
-    ctx.beginPath();
-    roundRect(ctx, boxX, boxY, boxW, boxH, 8);
-    ctx.fill();
-    ctx.fillStyle = "#3a2a22";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, boxX + boxW / 2, boxY + boxH / 2);
-    ctx.textBaseline = "alphabetic";
   }
 
   function roundRect(c, x, y, w, h, r) {

@@ -764,7 +764,8 @@ body {
 /* 縦画面：タイトルを圧縮し、見切れ時はスライドで全体を見られるように */
 @media (orientation: portrait) {
   .overlay {
-    align-items: stretch;
+    flex-direction: column;
+    align-items: center;
     justify-content: flex-start;
     padding:
       max(8px, env(safe-area-inset-top))
@@ -777,6 +778,7 @@ body {
     width: min(92vw, 420px);
     max-height: 100%;
     margin-block: auto;
+    margin-inline: auto;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -1052,7 +1054,8 @@ body {
   }
 
   .overlay {
-    align-items: stretch;
+    flex-direction: column;
+    align-items: center;
     justify-content: flex-start;
     padding:
       max(4px, env(safe-area-inset-top))
@@ -1065,6 +1068,7 @@ body {
     width: min(96vw, 520px);
     max-height: 100%;
     margin-block: auto;
+    margin-inline: auto;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;

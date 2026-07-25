@@ -4,7 +4,7 @@
   const W = 960;
   const H = 540;
   /** 更新のたびに +0.01（表示は Ver.x.xx） */
-  const APP_VERSION = "1.01";
+  const APP_VERSION = "1.02";
   const GROUND_Y = 420;
   const PLAYER_X = 180;
   const GRAVITY = 2200;
@@ -22,6 +22,7 @@
   const SFX_KEY = "momoDashSfx";
   const FIREWORKS_KEY = "momoDashFireworks";
   const CHAR_KEY = "momoDashChar";
+  const USER_KEY = "momoDashUserName";
   const BGM_VOLUME = 0.45;
   const BGM_TRACKS = [
     { file: "sounds/bgm.mp3", label: "ももももラン！" },
@@ -93,8 +94,16 @@
   const charBestHardEl = document.getElementById("char-best-hard");
   const titleScreen = document.getElementById("title-screen");
   const gameoverScreen = document.getElementById("gameover-screen");
+  const nameRegisterScreen = document.getElementById("name-register-screen");
   const finalScoreEl = document.getElementById("final-score");
+  const finalScoreLabelEl = document.getElementById("final-score-label");
   const newBestEl = document.getElementById("new-best");
+  const titleUserNameEl = document.getElementById("title-user-name");
+  const btnDeleteUser = document.getElementById("btn-delete-user");
+  const inputUserName = document.getElementById("input-user-name");
+  const nameRegisterError = document.getElementById("name-register-error");
+  const btnNameOk = document.getElementById("btn-name-ok");
+  const btnNameCancel = document.getElementById("btn-name-cancel");
   const btnStart = document.getElementById("btn-start");
   const btnRetry = document.getElementById("btn-retry");
   const btnTitle = document.getElementById("btn-title");
@@ -114,6 +123,8 @@
   let bgmMode = loadBgmMode();
   let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
   let fireworksEnabled = localStorage.getItem(FIREWORKS_KEY) !== "0";
+  let userName = loadUserName();
+  let pendingStartAsDebug = false;
   let selectedCharId = loadSelectedChar();
   let selectedMode = loadSelectedMode();
   /** @type {{phase:"idle"|"spin"|"heavy"|"wing_yuzu"|"wing_hakase", count:number}} */
@@ -225,6 +236,75 @@
     const raw = localStorage.getItem(MODE_KEY);
     if (MODE_IDS.indexOf(raw) !== -1) return raw;
     return "normal";
+  }
+
+  function loadUserName() {
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return "";
+    return String(raw).trim().slice(0, 12);
+  }
+
+  function saveUserName(name) {
+    userName = String(name || "").trim().slice(0, 12);
+    if (userName) localStorage.setItem(USER_KEY, userName);
+    else localStorage.removeItem(USER_KEY);
+    syncUserNameUi();
+  }
+
+  function clearUserName() {
+    userName = "";
+    localStorage.removeItem(USER_KEY);
+    syncUserNameUi();
+  }
+
+  function syncUserNameUi() {
+    if (titleUserNameEl) {
+      titleUserNameEl.textContent = userName || "未登録";
+    }
+    if (btnDeleteUser) {
+      btnDeleteUser.classList.toggle("hidden", !userName);
+    }
+  }
+
+  function showNameRegister(asDebug) {
+    pendingStartAsDebug = !!asDebug;
+    if (nameRegisterError) nameRegisterError.classList.add("hidden");
+    if (inputUserName) {
+      inputUserName.value = userName || "";
+    }
+    if (nameRegisterScreen) nameRegisterScreen.classList.remove("hidden");
+    if (inputUserName) {
+      setTimeout(function () {
+        inputUserName.focus();
+        inputUserName.select();
+      }, 50);
+    }
+  }
+
+  function hideNameRegister() {
+    if (nameRegisterScreen) nameRegisterScreen.classList.add("hidden");
+    pendingStartAsDebug = false;
+  }
+
+  function confirmNameAndStart() {
+    const name = inputUserName ? String(inputUserName.value || "").trim() : "";
+    if (!name) {
+      if (nameRegisterError) nameRegisterError.classList.remove("hidden");
+      if (inputUserName) inputUserName.focus();
+      return;
+    }
+    saveUserName(name);
+    const asDebug = pendingStartAsDebug;
+    hideNameRegister();
+    startGame(asDebug);
+  }
+
+  function requestStartGame(asDebug) {
+    if (!userName) {
+      showNameRegister(asDebug);
+      return;
+    }
+    startGame(!!asDebug);
   }
 
   function currentChar() {
@@ -890,6 +970,7 @@
     debugMode = false;
     debugTapCount = 0;
     clearSecretUnlocks();
+    hideNameRegister();
     titleScreen.classList.remove("hidden");
     gameoverScreen.classList.add("hidden");
     hud.classList.add("hidden");
@@ -901,6 +982,7 @@
     syncModeRecordsUi();
     syncCharRecordsUi();
     syncBestDisplay();
+    syncUserNameUi();
   }
 
   function startGame(asDebug) {
@@ -908,6 +990,7 @@
     resumeAudio();
     debugMode = !!asDebug;
     debugTapCount = 0;
+    hideNameRegister();
     resetGame();
     initDecor();
     state = "playing";
@@ -929,6 +1012,9 @@
     shake = 12;
     spawnBurst(player.x, player.y - player.r, "#ff8fab", 18);
     finalScoreEl.textContent = String(score);
+    if (finalScoreLabelEl) {
+      finalScoreLabelEl.textContent = userName ? userName + "さんのスコア" : "スコア";
+    }
     const isNew = submitScore(score);
     newBestEl.classList.toggle("hidden", !isNew);
     gameoverScreen.classList.remove("hidden");
@@ -1003,12 +1089,13 @@
   }
 
   function tryAction() {
+    if (isNameRegisterOpen()) return;
     if (state === "title") {
-      startGame(false);
+      requestStartGame(false);
       return;
     }
     if (state === "gameover") {
-      startGame(false);
+      requestStartGame(false);
       return;
     }
     if (!player.onGround && player.jumpsLeft <= 0) {
@@ -1016,6 +1103,10 @@
       return;
     }
     jump();
+  }
+
+  function isNameRegisterOpen() {
+    return !!(nameRegisterScreen && !nameRegisterScreen.classList.contains("hidden"));
   }
 
   function canvasCoords(e) {
@@ -1035,11 +1126,12 @@
   }
 
   function handleTitlePeachTap() {
+    if (isNameRegisterOpen()) return;
     debugTapCount += 1;
     player.squish = 1.3;
     spawnBurst(player.x, player.y - player.r, "#ff8fab", 5);
     if (debugTapCount >= DEBUG_TAPS_NEEDED) {
-      startGame(true);
+      requestStartGame(true);
     }
   }
 
@@ -3272,7 +3364,9 @@
     return !!(
       target &&
       target.closest &&
-      target.closest("button, a, input, select, label, .panel, .sound-settings, .char-select, .mode-select, .mode-records, .debug-exit-btn")
+      target.closest(
+        "button, a, input, select, label, .panel, .sound-settings, .char-select, .mode-select, .mode-records, .user-row, .name-register-panel, .debug-exit-btn"
+      )
     );
   }
 
@@ -3306,6 +3400,10 @@
   app.addEventListener("pointerdown", onPointer);
   window.addEventListener("keydown", function (e) {
     if (e.code === "Space" || e.code === "ArrowUp" || e.key === " ") {
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || isNameRegisterOpen()) {
+        return;
+      }
       e.preventDefault();
       tryAction();
     }
@@ -3313,11 +3411,11 @@
 
   btnStart.addEventListener("click", function (e) {
     e.stopPropagation();
-    startGame(false);
+    requestStartGame(false);
   });
   btnRetry.addEventListener("click", function (e) {
     e.stopPropagation();
-    startGame(false);
+    requestStartGame(false);
   });
   btnTitle.addEventListener("click", function (e) {
     e.stopPropagation();
@@ -3327,6 +3425,41 @@
     e.stopPropagation();
     showTitle();
   });
+
+  if (btnDeleteUser) {
+    btnDeleteUser.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (!userName) return;
+      if (window.confirm("本当に削除してもよろしいですか？")) {
+        clearUserName();
+      }
+    });
+  }
+  if (btnNameOk) {
+    btnNameOk.addEventListener("click", function (e) {
+      e.stopPropagation();
+      confirmNameAndStart();
+    });
+  }
+  if (btnNameCancel) {
+    btnNameCancel.addEventListener("click", function (e) {
+      e.stopPropagation();
+      hideNameRegister();
+    });
+  }
+  if (inputUserName) {
+    inputUserName.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmNameAndStart();
+      }
+    });
+    inputUserName.addEventListener("input", function () {
+      if (nameRegisterError) nameRegisterError.classList.add("hidden");
+    });
+    inputUserName.addEventListener("click", function (e) { e.stopPropagation(); });
+  }
 
   toggleSfx.addEventListener("change", function () {
     setSfxEnabled(toggleSfx.checked);
@@ -3367,6 +3500,7 @@
   syncModeRecordsUi();
   syncCharSelectUi();
   syncBestDisplay();
+  syncUserNameUi();
   const versionEl = document.getElementById("app-version");
   if (versionEl) versionEl.textContent = "Ver." + APP_VERSION;
   initDecor();

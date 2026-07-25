@@ -221,6 +221,49 @@ body {
   margin-bottom: 10px;
 }
 
+.user-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  margin: -2px 0 12px;
+}
+
+.user-name-line {
+  font-size: 0.85rem;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.user-name-label {
+  opacity: 0.55;
+  margin-right: 6px;
+  font-size: 0.72rem;
+}
+
+#title-user-name {
+  color: var(--peach-deep);
+  font-weight: 800;
+}
+
+.btn-delete-user {
+  padding: 4px 10px;
+  border: 1px solid rgba(58, 42, 34, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.btn-delete-user:active {
+  transform: scale(0.97);
+}
+
 .tagline {
   font-size: clamp(0.55rem, 1.5vh, 0.7rem);
   font-weight: 500;
@@ -577,6 +620,38 @@ body {
   opacity: 0.35;
 }
 
+.name-register-desc {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  margin-bottom: 14px;
+}
+
+.name-input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 2px solid rgba(58, 42, 34, 0.12);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.name-input:focus {
+  outline: 2px solid rgba(247, 108, 140, 0.45);
+  outline-offset: 1px;
+}
+
+.name-register-error {
+  color: #c45c1a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
 .result-title {
   font-size: 1.6rem;
   font-weight: 800;
@@ -785,6 +860,24 @@ body {
   .brand {
     font-size: clamp(0.95rem, 4.2vh, 1.35rem);
     margin-bottom: 2px;
+  }
+
+  .user-row {
+    margin: 0 0 4px;
+    gap: 4px 8px;
+  }
+
+  .user-name-line {
+    font-size: 0.7rem;
+  }
+
+  .user-name-label {
+    font-size: 0.6rem;
+  }
+
+  .btn-delete-user {
+    padding: 2px 8px;
+    font-size: 0.58rem;
   }
 
   .tagline {

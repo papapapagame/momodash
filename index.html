@@ -39,6 +39,13 @@
     <div id="title-screen" class="overlay">
       <div class="panel title-panel">
         <p class="brand">ももダッシュ</p>
+        <div class="user-row" id="user-row">
+          <p class="user-name-line">
+            <span class="user-name-label">プレイヤー</span>
+            <span id="title-user-name">未登録</span>
+          </p>
+          <button id="btn-delete-user" class="btn-delete-user hidden" type="button">ユーザー名削除</button>
+        </div>
         <p class="tagline">
           キャラと難易度を選んでスタート！<br>
           タップでジャンプ（キャラによって能力が違うよ）
@@ -120,7 +127,18 @@
         </div>
         <button id="btn-start" class="btn primary" type="button">スタート</button>
         <p class="hint">スペース / クリック / タップ</p>
-        <p class="version" id="app-version">Ver.1.01</p>
+        <p class="version" id="app-version">Ver.1.02</p>
+      </div>
+    </div>
+
+    <div id="name-register-screen" class="overlay hidden">
+      <div class="panel name-register-panel">
+        <p class="result-title">ユーザー名登録</p>
+        <p class="name-register-desc">ゲームで使う名前を入力してね</p>
+        <input id="input-user-name" class="name-input" type="text" maxlength="12" placeholder="なまえ" autocomplete="nickname" enterkeyhint="done">
+        <p id="name-register-error" class="name-register-error hidden">名前を入力してください</p>
+        <button id="btn-name-ok" class="btn primary" type="button">決定してはじめる</button>
+        <button id="btn-name-cancel" class="btn secondary" type="button">もどる</button>
       </div>
     </div>
 
@@ -130,7 +148,7 @@
     <div id="gameover-screen" class="overlay hidden">
       <div class="panel gameover-panel">
         <p class="result-title">ゲームオーバー</p>
-        <p class="result-score">スコア <span id="final-score">0</span></p>
+        <p class="result-score"><span id="final-score-label">スコア</span> <span id="final-score">0</span></p>
         <p id="new-best" class="new-best hidden">ベスト更新！</p>
         <div class="gameover-actions">
           <button id="btn-retry" class="btn primary" type="button">もういちど</button>

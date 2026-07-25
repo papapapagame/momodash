@@ -4,7 +4,7 @@
   const W = 960;
   const H = 540;
   /** 更新のたびに +0.01（表示は Ver.x.xx） */
-  const APP_VERSION = "1.02";
+  const APP_VERSION = "1.03";
   const GROUND_Y = 420;
   const PLAYER_X = 180;
   const GRAVITY = 2200;

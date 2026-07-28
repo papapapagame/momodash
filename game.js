@@ -9,6 +9,7 @@
   const JUMP_V = -780;
   const DOUBLE_JUMP_V = -700;
   const TRIPLE_JUMP_V = -680;
+  const DIVE_V = 1650;
   const MAX_JUMPS = 2;
   const PEACH_SCORE = 100;
   const FEATHER_BONUS_SCORE = 200;
@@ -96,6 +97,7 @@
     onGround: true,
     jumpsLeft: MAX_JUMPS,
     feather: false,
+    diving: false,
     squish: 1,
     blink: 0,
   };
@@ -403,6 +405,12 @@
     }
   }
 
+  function sfxDive() {
+    if (!sfxEnabled) return;
+    playTone(320, 0.08, "sawtooth", 0.14, 90);
+    playTone(180, 0.16, "triangle", 0.12, 55);
+  }
+
   function sfxHit() {
     if (!sfxEnabled) return;
     playTone(180, 0.18, "sawtooth", 0.22, 60);
@@ -455,6 +463,7 @@
     player.onGround = true;
     player.jumpsLeft = MAX_JUMPS;
     player.feather = false;
+    player.diving = false;
     player.squish = 1;
     player.blink = 0;
     setScore(0);
@@ -541,6 +550,7 @@
       burst = 10;
     }
 
+    player.diving = false;
     player.vy = vy;
     player.onGround = false;
     player.jumpsLeft -= 1;
@@ -554,6 +564,19 @@
     );
   }
 
+  function dive() {
+    if (state !== "playing") return;
+    if (player.onGround) return;
+    if (player.jumpsLeft > 0) return;
+    if (player.diving) return;
+
+    player.diving = true;
+    player.vy = DIVE_V;
+    player.squish = 0.55;
+    sfxDive();
+    spawnBurst(player.x, player.y - player.r, "#ffe08a", 12);
+  }
+
   function tryAction() {
     if (state === "title") {
       startGame(false);
@@ -561,6 +584,10 @@
     }
     if (state === "gameover") {
       startGame(false);
+      return;
+    }
+    if (!player.onGround && player.jumpsLeft <= 0) {
+      dive();
       return;
     }
     jump();
@@ -862,10 +889,11 @@
       player.y = GROUND_Y;
       player.vy = 0;
       if (!player.onGround) {
-        player.squish = 0.7;
-        spawnBurst(player.x, GROUND_Y, "#d4c090", 4);
+        player.squish = player.diving ? 0.45 : 0.7;
+        spawnBurst(player.x, GROUND_Y, player.diving ? "#ffe08a" : "#d4c090", player.diving ? 10 : 4);
       }
       player.onGround = true;
+      player.diving = false;
       player.jumpsLeft = maxJumps();
     } else if (overHole && player.y >= GROUND_Y - 2) {
       if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
@@ -877,6 +905,11 @@
     } else {
       if (player.onGround) player.jumpsLeft = Math.min(player.jumpsLeft, fallAirJumps);
       player.onGround = false;
+    }
+
+    // 急降下中はさらに真下へ加速
+    if (player.diving && player.vy < DIVE_V) {
+      player.vy = Math.min(DIVE_V, player.vy + 2400 * dt);
     }
 
     spawnTimer += dt;

@@ -4,7 +4,7 @@
   const W = 960;
   const H = 540;
   /** 更新のたびに +0.01（表示は Ver.x.xx） */
-  const APP_VERSION = "1.06";
+  const APP_VERSION = "1.07";
   const GROUND_Y = 420;
   const PLAYER_X = 180;
   const GRAVITY = 2200;
@@ -170,6 +170,8 @@
   let fireTimer = 0;
   let lasers = [];
   let shockwaves = [];
+  let rainbowRings = [];
+  let rainbowRingId = 0;
   let audioCtx = null;
   let bgm = null;
   let bgmTrackIndex = 0;
@@ -1054,6 +1056,7 @@
     fireTimer = 0;
     lasers = [];
     shockwaves = [];
+    rainbowRings = [];
     shootingStars = [];
     fireworks = [];
     shootTimer = 0;
@@ -1494,15 +1497,14 @@
         return;
       }
 
-      // Monarch: 羽は別枠の無敵（優先消費・最大2）。2個所持中に取ると全破壊
+      // Monarch: 羽は別枠の無敵（優先消費・最大2）。2個所持中に取ると虹円で全破壊
       if (selectedCharId === "monarch") {
         if (player.monarchFeather >= 2) {
-          destroyAllObstacles();
+          spawnMonarchRainbowBlast();
           sfxFeather();
-          shake = Math.max(shake, 10);
-          spawnBurst(item.x, item.y, "#ffd24a", 20);
-          spawnBurst(player.x, player.y - player.r, "#ff60c8", 24);
-          spawnFloatText(player.x, player.y - player.r - 40, "全破壊！！", "#c45c1a");
+          shake = Math.max(shake, 12);
+          spawnBurst(item.x, item.y, "#ffd24a", 16);
+          spawnFloatText(player.x, player.y - player.r - 40, "虹爆！！", "#c45c1a");
         } else {
           player.monarchFeather += 1;
           syncFeatherHud();
@@ -1862,6 +1864,7 @@
       updateLasers(dt);
     }
     updateShockwaves(dt);
+    updateRainbowRings(dt);
 
     const px = player.x;
     const py = player.y - player.r;
@@ -2270,11 +2273,123 @@
     }
   }
 
-  function destroyAllObstacles() {
-    for (let i = obstacles.length - 1; i >= 0; i--) {
-      const o = obstacles[i];
-      if (o.blown) continue;
-      destroyObstacle(o, 100, "#ff60c8");
+  function spawnMonarchRainbowBlast() {
+    rainbowRingId += 1;
+    rainbowRings.push({
+      id: rainbowRingId,
+      x: player.x,
+      y: player.y - player.r,
+      radius: player.r * 0.5,
+      expandSpeed: 980,
+      maxRadius: Math.hypot(W, H) * 1.05,
+      life: 1.4,
+      maxLife: 1.4,
+    });
+    spawnBurst(player.x, player.y - player.r, "#ff8fab", 22);
+    spawnBurst(player.x, player.y - player.r, "#ffd24a", 16);
+    spawnBurst(player.x, player.y - player.r, "#7ec8ff", 16);
+  }
+
+  function obstacleCenter(o) {
+    if (o.type === "hole") {
+      return { x: o.x + o.w * 0.5, y: GROUND_Y + 8 };
+    }
+    if (o.type === "bird") {
+      const by = (o.drawY != null ? o.drawY : o.y) - o.h * 0.5;
+      return { x: o.x + o.w * 0.5, y: by + o.h * 0.5 };
+    }
+    return {
+      x: o.x + (o.w || 20) * 0.5,
+      y: o.y - (o.h || 20) * 0.5,
+    };
+  }
+
+  function updateRainbowRings(dt) {
+    for (let i = rainbowRings.length - 1; i >= 0; i--) {
+      const ring = rainbowRings[i];
+      ring.x = player.x;
+      ring.y = player.y - player.r;
+      ring.radius += ring.expandSpeed * dt;
+      ring.life -= dt;
+
+      for (let j = obstacles.length - 1; j >= 0; j--) {
+        const o = obstacles[j];
+        if (o.blown || o.rainbowHit === ring.id) continue;
+        const c = obstacleCenter(o);
+        const dx = c.x - ring.x;
+        const dy = c.y - ring.y;
+        if (dx * dx + dy * dy <= ring.radius * ring.radius) {
+          o.rainbowHit = ring.id;
+          const hue = (animT * 220 + j * 40) % 360;
+          destroyObstacle(o, 100, "hsl(" + hue + ", 90%, 60%)");
+        }
+      }
+
+      // 波面のキラキラ
+      if (Math.random() < 0.65) {
+        const a = Math.random() * Math.PI * 2;
+        const hue = (animT * 180 + a * 40) % 360;
+        particles.push({
+          x: ring.x + Math.cos(a) * ring.radius,
+          y: ring.y + Math.sin(a) * ring.radius,
+          vx: Math.cos(a) * 40,
+          vy: Math.sin(a) * 40 - 30,
+          life: 0.25 + Math.random() * 0.25,
+          max: 0.5,
+          color: "hsl(" + hue + ", 95%, 65%)",
+          r: 2 + Math.random() * 3,
+        });
+      }
+
+      if (ring.radius >= ring.maxRadius || ring.life <= 0) {
+        rainbowRings.splice(i, 1);
+      }
+    }
+  }
+
+  function drawRainbowRings() {
+    for (let i = 0; i < rainbowRings.length; i++) {
+      const ring = rainbowRings[i];
+      const fade = Math.max(0, Math.min(1, ring.life / ring.maxLife));
+      const r = ring.radius;
+      if (r <= 1) continue;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+
+      // 内側の淡い虹グロー
+      const glow = ctx.createRadialGradient(ring.x, ring.y, Math.max(0, r - 50), ring.x, ring.y, r + 10);
+      glow.addColorStop(0, "rgba(255,255,255,0)");
+      glow.addColorStop(0.55, "hsla(" + ((animT * 120) % 360) + ", 90%, 70%, " + 0.08 * fade + ")");
+      glow.addColorStop(0.85, "hsla(" + ((animT * 120 + 120) % 360) + ", 95%, 65%, " + 0.22 * fade + ")");
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, r + 10, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 円形に広がる虹の帯
+      const bands = 7;
+      for (let b = 0; b < bands; b++) {
+        const hue = (animT * 160 + b * (360 / bands)) % 360;
+        const rr = Math.max(0, r - b * 5);
+        ctx.globalAlpha = (0.75 - b * 0.07) * fade;
+        ctx.strokeStyle = "hsl(" + hue + ", 95%, " + (58 + b * 3) + "%)";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.arc(ring.x, ring.y, rr, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // 先頭の白い縁
+      ctx.globalAlpha = 0.85 * fade;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
     }
   }
 
@@ -2364,6 +2479,7 @@
     drawFireballs();
     drawLasers();
     drawShockwaves();
+    drawRainbowRings();
     if (state === "title") {
       ctx.globalAlpha = 0.4;
       drawPlayer();

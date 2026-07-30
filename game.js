@@ -4,13 +4,14 @@
   const W = 960;
   const H = 540;
   /** 更新のたびに +0.01（表示は Ver.x.xx） */
-  const APP_VERSION = "1.04";
+  const APP_VERSION = "1.05";
   const GROUND_Y = 420;
   const PLAYER_X = 180;
   const GRAVITY = 2200;
   const JUMP_V = -780;
   const DOUBLE_JUMP_V = -700;
   const TRIPLE_JUMP_V = -680;
+  const QUAD_JUMP_V = -660;
   const DIVE_V = 1650;
   const MAX_JUMPS = 2;
   const PEACH_SCORE = 100;
@@ -30,8 +31,8 @@
     { file: "sounds/peach-dash.mp3", label: "Peach Dash" },
   ];
   const BGM_MODE_VALUES = ["0", "1", "2", "sequence", "random", "off"];
-  const CHAR_IDS = ["normal", "spin", "heavy", "wing", "yuzu", "hakase"];
-  const SECRET_CHAR_IDS = ["yuzu", "hakase"];
+  const CHAR_IDS = ["normal", "spin", "heavy", "wing", "yuzu", "hakase", "monarch"];
+  const SECRET_CHAR_IDS = ["yuzu", "hakase", "monarch"];
   const MODE_IDS = ["easy", "normal", "hard"];
   const CHARACTERS = {
     normal: {
@@ -73,6 +74,13 @@
       id: "hakase",
       name: "はかせ",
       desc: "金色のティラノ！2秒ごとに火の玉を前方発射（羽所持中は1秒間隔）。通常の火の玉は穴以外を破壊して＋100。桃を取ると前方三方向に特殊火の玉を発射し、穴も破壊できる！3段ジャンプを使うと発射間隔は元に戻るぞ",
+      distMult: 1.2,
+      canDive: true,
+    },
+    monarch: {
+      id: "monarch",
+      name: "Monarch Ex World 桃",
+      desc: "世界を超越した桃の王。2回無敵、常時4段ジャンプ。急降下時には敵を破壊し着地時に衝撃波を出す。桃を3つ取るとレーザーを出し、羽を取ると無敵を獲得（2個までストック可）。さらに羽を取ると…？",
       distMult: 1.2,
       canDive: true,
     },
@@ -119,7 +127,7 @@
   let debugTapCount = 0;
   const DEBUG_TAPS_NEEDED = 10;
   let records = loadRecords();
-  let unlocks = { yuzu: false, hakase: false };
+  let unlocks = { yuzu: false, hakase: false, monarch: false };
   let bgmMode = loadBgmMode();
   let sfxEnabled = localStorage.getItem(SFX_KEY) !== "0";
   let fireworksEnabled = localStorage.getItem(FIREWORKS_KEY) !== "0";
@@ -127,7 +135,12 @@
   let pendingStartAsDebug = false;
   let selectedCharId = loadSelectedChar();
   let selectedMode = loadSelectedMode();
-  /** @type {{phase:"idle"|"spin"|"heavy"|"wing_yuzu"|"wing_hakase", count:number}} */
+  /**
+   * 隠し解禁タップ状態
+   * monarch: m_easy → m_mode_normal → m_mode_hard → m_char_normal → m_char_spin → m_char_heavy → m_char_wing
+   * yuzu/hakase: spin|heavy → wing_*
+   * @type {{phase:string, count:number}}
+   */
   let secretTap = { phase: "idle", count: 0 };
   let score = 0;
   let distance = 0;
@@ -155,6 +168,8 @@
   let floatTexts = [];
   let fireballs = [];
   let fireTimer = 0;
+  let lasers = [];
+  let shockwaves = [];
   let audioCtx = null;
   let bgm = null;
   let bgmTrackIndex = 0;
@@ -227,7 +242,7 @@
   function loadSelectedChar() {
     const raw = localStorage.getItem(CHAR_KEY);
     // 隠しキャラはセッション解禁のみ。起動時は通常キャラに戻す
-    if (raw === "yuzu" || raw === "hakase") return "normal";
+    if (raw === "yuzu" || raw === "hakase" || raw === "monarch") return "normal";
     if (CHAR_IDS.indexOf(raw) !== -1) return raw;
     return "normal";
   }
@@ -319,6 +334,7 @@
     if (CHAR_IDS.indexOf(id) === -1) return;
     if (id === "yuzu" && !unlocks.yuzu) return;
     if (id === "hakase" && !unlocks.hakase) return;
+    if (id === "monarch" && !unlocks.monarch) return;
     selectedCharId = id;
     localStorage.setItem(CHAR_KEY, id);
     syncCharSelectUi();
@@ -328,6 +344,7 @@
     const opts = ["normal"];
     if (unlocks.yuzu) opts.push("yuzu");
     if (unlocks.hakase) opts.push("hakase");
+    if (unlocks.monarch) opts.push("monarch");
     return opts;
   }
 
@@ -349,7 +366,82 @@
     }
   }
 
+  function handleSecretModeTap(modeId) {
+    if (modeId === "easy") {
+      if (secretTap.phase === "m_easy") {
+        secretTap.count += 1;
+      } else {
+        secretTap.phase = "m_easy";
+        secretTap.count = 1;
+      }
+      if (secretTap.count >= 2) {
+        secretTap.phase = "m_mode_normal";
+        secretTap.count = 0;
+      }
+      return;
+    }
+    if (modeId === "normal") {
+      if (secretTap.phase === "m_mode_normal") {
+        secretTap.count += 1;
+        if (secretTap.count >= 2) {
+          secretTap.phase = "m_mode_hard";
+          secretTap.count = 0;
+        }
+      } else {
+        secretTap = { phase: "idle", count: 0 };
+      }
+      return;
+    }
+    if (modeId === "hard") {
+      if (secretTap.phase === "m_mode_hard") {
+        secretTap.count += 1;
+        if (secretTap.count >= 2) {
+          secretTap.phase = "m_char_normal";
+          secretTap.count = 0;
+        }
+      } else {
+        secretTap = { phase: "idle", count: 0 };
+      }
+    }
+  }
+
+  /** @returns {"progress"|"unlock"|"miss"} */
+  function handleMonarchCharTap(charId) {
+    const phases = {
+      m_char_normal: { expect: "normal", need: 3, next: "m_char_spin" },
+      m_char_spin: { expect: "spin", need: 3, next: "m_char_heavy" },
+      m_char_heavy: { expect: "heavy", need: 3, next: "m_char_wing" },
+      m_char_wing: { expect: "wing", need: 10, next: null },
+    };
+    const step = phases[secretTap.phase];
+    if (!step) {
+      if (String(secretTap.phase).indexOf("m_") === 0) {
+        secretTap = { phase: "idle", count: 0 };
+      }
+      return "miss";
+    }
+    if (charId !== step.expect) {
+      secretTap = { phase: "idle", count: 0 };
+      return "miss";
+    }
+    secretTap.count += 1;
+    if (secretTap.count >= step.need) {
+      if (!step.next) {
+        const got = unlockSecret("monarch");
+        secretTap = { phase: "idle", count: 0 };
+        return got ? "unlock" : "progress";
+      }
+      secretTap.phase = step.next;
+      secretTap.count = 0;
+    }
+    return "progress";
+  }
+
   function handleSecretUnlockTap(charId) {
+    const monarch = handleMonarchCharTap(charId);
+    if (monarch === "unlock") return true;
+    if (monarch === "progress") return false;
+
     if (charId === "spin") {
       if (secretTap.phase === "spin") {
         secretTap.count += 1;
@@ -417,18 +509,29 @@
       spawnFloatText(player.x, player.y - player.r - 40, "はかせ 解禁！", "#b8860b");
       return true;
     }
+    if (id === "monarch" && !unlocks.monarch) {
+      unlocks.monarch = true;
+      selectedCharId = "monarch";
+      syncCharSelectUi();
+      spawnBurst(player.x, player.y - player.r, "#ff8fab", 28);
+      spawnBurst(player.x, player.y - player.r, "#ffd24a", 18);
+      spawnBurst(player.x, player.y - player.r, "#7ec8ff", 18);
+      spawnFloatText(player.x, player.y - player.r - 40, "Monarch 解禁！", "#c45c1a");
+      return true;
+    }
     return false;
   }
 
   function clearSecretUnlocks() {
     unlocks.yuzu = false;
     unlocks.hakase = false;
+    unlocks.monarch = false;
     secretTap = { phase: "idle", count: 0 };
     if (isSecretSlotChar(selectedCharId) && selectedCharId !== "normal") {
       selectedCharId = "normal";
     }
     const stored = localStorage.getItem(CHAR_KEY);
-    if (stored === "yuzu" || stored === "hakase") {
+    if (stored === "yuzu" || stored === "hakase" || stored === "monarch") {
       localStorage.setItem(CHAR_KEY, "normal");
     }
   }
@@ -553,6 +656,9 @@
     invuln: 0,
     birdKills: 0,
     yuzuGuard: 0,
+    monarchGuard: 0,
+    monarchFeather: 0,
+    peachStreak: 0,
     fallingInHole: false,
   };
 
@@ -571,6 +677,15 @@
     } else if (selectedCharId === "yuzu") {
       if (label) label.textContent = player.yuzuGuard > 0 ? "無敵" : "3段ジャンプ";
       featherHud.classList.toggle("hidden", !(player.feather || player.yuzuGuard > 0));
+    } else if (selectedCharId === "monarch") {
+      const parts = [];
+      if (player.monarchFeather > 0) parts.push("羽無敵×" + player.monarchFeather);
+      if (player.monarchGuard > 0) parts.push("無敵×" + player.monarchGuard);
+      if (label) label.textContent = parts.length ? parts.join(" ") : "無敵";
+      featherHud.classList.toggle(
+        "hidden",
+        player.monarchGuard <= 0 && player.monarchFeather <= 0
+      );
     } else {
       if (label) label.textContent = "3段ジャンプ";
       featherHud.classList.toggle("hidden", !player.feather);
@@ -870,7 +985,10 @@
 
   function sfxJump(kind) {
     if (!sfxEnabled) return;
-    if (kind === "triple") {
+    if (kind === "quad") {
+      playTone(620, 0.1, "triangle", 0.16, 1100);
+      playTone(980, 0.12, "sine", 0.12, 1500);
+    } else if (kind === "triple") {
       playTone(560, 0.1, "triangle", 0.16, 980);
       playTone(880, 0.1, "sine", 0.12, 1280);
     } else if (kind === "double") {
@@ -911,6 +1029,7 @@
   }
 
   function maxJumps() {
+    if (selectedCharId === "monarch") return 4;
     if (selectedCharId === "wing") return 3;
     if (selectedCharId === "heavy") return MAX_JUMPS;
     return MAX_JUMPS + (player.feather ? 1 : 0);
@@ -933,6 +1052,8 @@
     floatTexts = [];
     fireballs = [];
     fireTimer = 0;
+    lasers = [];
+    shockwaves = [];
     shootingStars = [];
     fireworks = [];
     shootTimer = 0;
@@ -953,6 +1074,9 @@
     player.invuln = 0;
     player.birdKills = 0;
     player.yuzuGuard = 0;
+    player.monarchGuard = selectedCharId === "monarch" ? 2 : 0;
+    player.monarchFeather = 0;
+    player.peachStreak = 0;
     player.fallingInHole = false;
     player.jumpsLeft = maxJumps();
     setScore(0);
@@ -1025,37 +1149,59 @@
     if (state !== "playing") return;
     if (player.jumpsLeft <= 0) return;
 
-    const canTriple =
-      selectedCharId === "wing" ||
-      (selectedCharId !== "heavy" && player.feather);
-    const isTriple = canTriple && !player.onGround && player.jumpsLeft === 1;
-    const isDouble = !player.onGround && !isTriple;
     let kind = "single";
     let vy = JUMP_V;
     let color = "#c8e6a0";
     let burst = 6;
 
-    if (isTriple) {
-      kind = "triple";
-      vy = TRIPLE_JUMP_V;
-      color = "#a8e8ff";
-      burst = 14;
-      if (selectedCharId !== "wing") {
-        player.feather = false;
-        syncFeatherHud();
+    if (selectedCharId === "monarch") {
+      if (!player.onGround) {
+        if (player.jumpsLeft === 1) {
+          kind = "quad";
+          vy = QUAD_JUMP_V;
+          color = "#ffd24a";
+          burst = 16;
+        } else if (player.jumpsLeft === 2) {
+          kind = "triple";
+          vy = TRIPLE_JUMP_V;
+          color = "#a8e8ff";
+          burst = 14;
+        } else {
+          kind = "double";
+          vy = DOUBLE_JUMP_V;
+          color = "#ffd0e0";
+          burst = 10;
+        }
       }
-    } else if (isDouble) {
-      kind = "double";
-      vy = DOUBLE_JUMP_V;
-      color = "#ffd0e0";
-      burst = 10;
+    } else {
+      const canTriple =
+        selectedCharId === "wing" ||
+        (selectedCharId !== "heavy" && player.feather);
+      const isTriple = canTriple && !player.onGround && player.jumpsLeft === 1;
+      const isDouble = !player.onGround && !isTriple;
+
+      if (isTriple) {
+        kind = "triple";
+        vy = TRIPLE_JUMP_V;
+        color = "#a8e8ff";
+        burst = 14;
+        if (selectedCharId !== "wing") {
+          player.feather = false;
+          syncFeatherHud();
+        }
+      } else if (isDouble) {
+        kind = "double";
+        vy = DOUBLE_JUMP_V;
+        color = "#ffd0e0";
+        burst = 10;
+      }
     }
 
     player.diving = false;
     player.vy = vy;
     player.onGround = false;
     player.jumpsLeft -= 1;
-    player.squish = isTriple ? 1.4 : isDouble ? 1.35 : 1.25;
+    player.squish = kind === "quad" || kind === "triple" ? 1.4 : kind === "double" ? 1.35 : 1.25;
     sfxJump(kind);
     spawnBurst(
       player.x,
@@ -1297,6 +1443,14 @@
       if (selectedCharId === "hakase") {
         spawnHakasePeachFireballs();
       }
+      if (selectedCharId === "monarch") {
+        player.peachStreak += 1;
+        if (player.peachStreak >= 3) {
+          player.peachStreak = 0;
+          spawnMonarchLasers();
+          spawnFloatText(player.x, player.y - player.r - 36, "レーザー！", "#ff60c8");
+        }
+      }
       return;
     }
 
@@ -1332,6 +1486,25 @@
           sfxFeather();
           spawnBurst(item.x, item.y, "#ffd24a", 14);
           spawnFloatText(item.x, item.y - 20, "急降下×2！", "#5a8ad0");
+        }
+        return;
+      }
+
+      // Monarch: 羽は別枠の無敵（優先消費・最大2）。2個所持中に取ると全破壊
+      if (selectedCharId === "monarch") {
+        if (player.monarchFeather >= 2) {
+          destroyAllObstacles();
+          sfxFeather();
+          shake = Math.max(shake, 10);
+          spawnBurst(item.x, item.y, "#ffd24a", 20);
+          spawnBurst(player.x, player.y - player.r, "#ff60c8", 24);
+          spawnFloatText(player.x, player.y - player.r - 40, "全破壊！！", "#c45c1a");
+        } else {
+          player.monarchFeather += 1;
+          syncFeatherHud();
+          sfxFeather();
+          spawnBurst(item.x, item.y, "#ffd24a", 14);
+          spawnFloatText(item.x, item.y - 20, "羽無敵+" + player.monarchFeather, "#9a6a00");
         }
         return;
       }
@@ -1541,9 +1714,13 @@
     if (player.y >= GROUND_Y && !overHole && !player.fallingInHole) {
       player.y = GROUND_Y;
       player.vy = 0;
+      const landedDive = player.diving;
       if (!player.onGround) {
-        player.squish = player.diving ? 0.45 : 0.7;
-        spawnBurst(player.x, GROUND_Y, player.diving ? "#ffe08a" : "#d4c090", player.diving ? 10 : 4);
+        player.squish = landedDive ? 0.45 : 0.7;
+        spawnBurst(player.x, GROUND_Y, landedDive ? "#ffe08a" : "#d4c090", landedDive ? 10 : 4);
+        if (selectedCharId === "monarch" && landedDive) {
+          spawnMonarchShockwave();
+        }
       }
       player.onGround = true;
       player.diving = false;
@@ -1677,6 +1854,10 @@
     if (selectedCharId === "hakase") {
       updateFireballs(dt);
     }
+    if (selectedCharId === "monarch") {
+      updateLasers(dt);
+    }
+    updateShockwaves(dt);
 
     const px = player.x;
     const py = player.y - player.r;
@@ -1717,7 +1898,7 @@
 
   /** 穴の上判定（高速時は前フレーム位置も見てすり抜けを防ぐ） */
   function isPlayerOverHole(dt) {
-    if (debugMode || selectedCharId === "wing") return false;
+    if (debugMode || selectedCharId === "wing" || selectedCharId === "monarch") return false;
     const half = player.r * 0.45;
     const left = player.x - half;
     const right = player.x + half;
@@ -1780,10 +1961,37 @@
       return "ok";
     }
 
-    // ヘビー桃: 急降下中は破壊
-    if (selectedCharId === "heavy" && player.diving) {
-      destroyObstacle(o, 100, "#6a6a6a");
+    // ヘビー桃 / Monarch: 急降下中は破壊
+    if (
+      (selectedCharId === "heavy" || selectedCharId === "monarch") &&
+      player.diving
+    ) {
+      destroyObstacle(o, 100, selectedCharId === "monarch" ? "#ff60c8" : "#6a6a6a");
       return "ok";
+    }
+
+    // Monarch: 羽無敵を優先消費、次に初期2回無敵
+    if (selectedCharId === "monarch") {
+      if (player.monarchFeather > 0) {
+        player.monarchFeather -= 1;
+        player.invuln = 0.85;
+        player.squish = 1.35;
+        syncFeatherHud();
+        sfxHit();
+        spawnBurst(player.x, player.y - player.r, "#ffd24a", 14);
+        spawnFloatText(player.x, player.y - player.r - 28, "羽無敵！", "#9a6a00");
+        return "ok";
+      }
+      if (player.monarchGuard > 0) {
+        player.monarchGuard -= 1;
+        player.invuln = 0.85;
+        player.squish = 1.35;
+        syncFeatherHud();
+        sfxHit();
+        spawnBurst(player.x, player.y - player.r, "#ff8fab", 14);
+        spawnFloatText(player.x, player.y - player.r - 28, "無敵！", "#c45c1a");
+        return "ok";
+      }
     }
 
     // ゆずりんご無敵: 岩・木
@@ -1894,6 +2102,178 @@
     spawnBurst(x, y, "#ff6020", 14);
   }
 
+  function spawnMonarchLasers() {
+    const angles = [-0.42, 0, 0.42];
+    for (let i = 0; i < angles.length; i++) {
+      lasers.push({
+        angle: angles[i],
+        life: 1,
+        max: 1,
+        length: W * 0.85,
+        width: 10,
+      });
+    }
+    spawnBurst(player.x + player.r, player.y - player.r, "#ff60c8", 16);
+  }
+
+  function laserHitsObstacle(ox, oy, angle, length, width, o) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    let cx;
+    let cy;
+    let hw;
+    let hh;
+    if (o.type === "hole") {
+      cx = o.x + o.w * 0.5;
+      cy = GROUND_Y + 10;
+      hw = o.w * 0.5;
+      hh = 24;
+    } else if (o.type === "bird") {
+      const by = (o.drawY != null ? o.drawY : o.y) - o.h * 0.5;
+      cx = o.x + o.w * 0.5;
+      cy = by + o.h * 0.5;
+      hw = o.w * 0.5;
+      hh = o.h * 0.5;
+    } else {
+      cx = o.x + (o.w || 20) * 0.5;
+      cy = o.y - (o.h || 20) * 0.5;
+      hw = (o.w || 20) * 0.5;
+      hh = (o.h || 20) * 0.5;
+    }
+    const dx = cx - ox;
+    const dy = cy - oy;
+    const along = dx * cos + dy * sin;
+    if (along < 0 || along > length) return false;
+    const perp = Math.abs(-dx * sin + dy * cos);
+    return perp < width * 0.5 + Math.max(hw, hh) * 0.65;
+  }
+
+  function updateLasers(dt) {
+    for (let i = lasers.length - 1; i >= 0; i--) {
+      const laser = lasers[i];
+      laser.life -= dt;
+      const ox = player.x + player.r * 0.6;
+      const oy = player.y - player.r;
+      for (let j = obstacles.length - 1; j >= 0; j--) {
+        const o = obstacles[j];
+        if (o.blown) continue;
+        if (laserHitsObstacle(ox, oy, laser.angle, laser.length, laser.width, o)) {
+          destroyObstacle(o, 100, "#ff60c8");
+        }
+      }
+      if (laser.life <= 0) lasers.splice(i, 1);
+    }
+  }
+
+  function drawLasers() {
+    for (let i = 0; i < lasers.length; i++) {
+      const laser = lasers[i];
+      const t = Math.max(0, laser.life / laser.max);
+      const ox = player.x + player.r * 0.6;
+      const oy = player.y - player.r;
+      const ex = ox + Math.cos(laser.angle) * laser.length;
+      const ey = oy + Math.sin(laser.angle) * laser.length;
+      ctx.save();
+      ctx.globalAlpha = 0.35 + t * 0.55;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = laser.width + 6;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      const hue = (animT * 180 + i * 40) % 360;
+      ctx.strokeStyle = "hsl(" + hue + ", 95%, 65%)";
+      ctx.lineWidth = laser.width;
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.strokeStyle = "#fff8ff";
+      ctx.lineWidth = Math.max(2, laser.width * 0.35);
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /** NORMALの鳥に届かない高さで、前方〜画面中央まで衝撃波 */
+  function spawnMonarchShockwave() {
+    const x0 = player.x;
+    const x1 = W * 0.5;
+    const top = GROUND_Y - 52;
+    const bottom = GROUND_Y + 12;
+    shockwaves.push({ x0: x0, x1: x1, top: top, bottom: bottom, life: 0.4, max: 0.4 });
+    shake = Math.max(shake, 8);
+    spawnBurst((x0 + x1) * 0.5, GROUND_Y - 20, "#ffd24a", 18);
+    spawnFloatText(player.x + 40, GROUND_Y - 40, "衝撃波！", "#c45c1a");
+
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      if (o.blown) continue;
+      if (obstacleInShockwave(o, x0, x1, top, bottom)) {
+        destroyObstacle(o, 100, "#ffd24a");
+      }
+    }
+  }
+
+  function obstacleInShockwave(o, x0, x1, top, bottom) {
+    const left = Math.min(x0, x1);
+    const right = Math.max(x0, x1);
+    if (o.type === "hole") {
+      return o.x + o.w > left && o.x < right;
+    }
+    if (o.type === "bird") {
+      const by = (o.drawY != null ? o.drawY : o.y) - o.h * 0.5;
+      const birdBottom = by + o.h;
+      // NORMAL鳥に届かない高さ制限（鳥本体が帯の上なら無視）
+      if (birdBottom < top) return false;
+      return o.x + o.w > left && o.x < right && by < bottom;
+    }
+    const obLeft = o.x;
+    const obRight = o.x + (o.w || 20);
+    const obTop = o.y - (o.h || 20);
+    const obBottom = o.y;
+    return obRight > left && obLeft < right && obBottom > top && obTop < bottom;
+  }
+
+  function updateShockwaves(dt) {
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      shockwaves[i].life -= dt;
+      if (shockwaves[i].life <= 0) shockwaves.splice(i, 1);
+    }
+  }
+
+  function drawShockwaves() {
+    for (let i = 0; i < shockwaves.length; i++) {
+      const s = shockwaves[i];
+      const t = Math.max(0, s.life / s.max);
+      const midY = (s.top + s.bottom) * 0.5;
+      const h = (s.bottom - s.top) * (0.55 + t * 0.45);
+      ctx.save();
+      ctx.globalAlpha = 0.25 + t * 0.45;
+      const grad = ctx.createLinearGradient(s.x0, midY, s.x1, midY);
+      grad.addColorStop(0, "rgba(255, 240, 180, 0.9)");
+      grad.addColorStop(0.5, "rgba(255, 120, 180, 0.75)");
+      grad.addColorStop(1, "rgba(120, 200, 255, 0.15)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse((s.x0 + s.x1) * 0.5, midY, (s.x1 - s.x0) * 0.5, h * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function destroyAllObstacles() {
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      if (o.blown) continue;
+      destroyObstacle(o, 100, "#ff60c8");
+    }
+  }
+
   function fireballHitsObstacle(f, o) {
     if (o.type === "hole") {
       return (
@@ -1978,6 +2358,8 @@
     drawObstacles();
     drawItems();
     drawFireballs();
+    drawLasers();
+    drawShockwaves();
     if (state === "title") {
       ctx.globalAlpha = 0.4;
       drawPlayer();
@@ -3118,6 +3500,153 @@
     ctx.restore();
   }
 
+  function drawMonarchPeach(x, y, r, sx, sy, runBob) {
+    ctx.save();
+    ctx.translate(x, y - r + runBob);
+    ctx.scale(sx, sy);
+    if (player.invuln > 0 && Math.floor(player.invuln * 20) % 2 === 0) {
+      ctx.globalAlpha = 0.45;
+    }
+
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(0, r / sy + 6, r * 0.7, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 後光（光線）
+    const rayN = 12;
+    for (let i = 0; i < rayN; i++) {
+      const a = (i / rayN) * Math.PI * 2 + animT * 0.6;
+      const hue = (animT * 80 + i * 30) % 360;
+      ctx.strokeStyle = "hsla(" + hue + ", 95%, 70%, 0.28)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * (r + 4), Math.sin(a) * (r + 4));
+      ctx.lineTo(Math.cos(a) * (r + 28 + Math.sin(animT * 5 + i) * 4), Math.sin(a) * (r + 28));
+      ctx.stroke();
+    }
+
+    // 虹色ハロー
+    ctx.strokeStyle = "hsla(" + ((animT * 120) % 360) + ", 90%, 65%, 0.55)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 12 + Math.sin(animT * 4) * 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "hsla(" + ((animT * 120 + 120) % 360) + ", 90%, 70%, 0.4)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 18 + Math.sin(animT * 3.2) * 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 虹色ボディ
+    const body = ctx.createRadialGradient(-8, -10, 4, 0, 0, r);
+    const baseHue = (animT * 90) % 360;
+    body.addColorStop(0, "hsl(" + baseHue + ", 95%, 88%)");
+    body.addColorStop(0.35, "hsl(" + ((baseHue + 60) % 360) + ", 90%, 72%)");
+    body.addColorStop(0.7, "hsl(" + ((baseHue + 140) % 360) + ", 85%, 62%)");
+    body.addColorStop(1, "hsl(" + ((baseHue + 220) % 360) + ", 80%, 52%)");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // cleft
+    ctx.strokeStyle = "rgba(80, 40, 90, 0.35)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, -r + 4);
+    ctx.quadraticCurveTo(-2, -4, 0, 8);
+    ctx.stroke();
+
+    // leaf / stem（金緑）
+    ctx.fillStyle = "#c8f060";
+    ctx.beginPath();
+    ctx.ellipse(-6, -r + 2, 10, 6, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8aaa20";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -r + 4);
+    ctx.lineTo(0, -r - 10);
+    ctx.stroke();
+
+    // crown sparkle
+    ctx.fillStyle = "#fff8a0";
+    ctx.beginPath();
+    ctx.arc(0, -r - 14, 3 + Math.sin(animT * 8), 0, Math.PI * 2);
+    ctx.fill();
+
+    // face
+    const eyesClosed = player.blink % 3.2 > 3.0;
+    if (eyesClosed) {
+      ctx.strokeStyle = "#3a2a22";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-12, -4);
+      ctx.lineTo(-5, -4);
+      ctx.moveTo(5, -4);
+      ctx.lineTo(12, -4);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#3a2a22";
+      ctx.beginPath();
+      ctx.arc(-8, -4, 3.2, 0, Math.PI * 2);
+      ctx.arc(8, -4, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(-7, -5, 1.2, 0, Math.PI * 2);
+      ctx.arc(9, -5, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = "rgba(255, 180, 220, 0.5)";
+    ctx.beginPath();
+    ctx.ellipse(-14, 4, 5, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(14, 4, 5, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#3a2a22";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(0, 4, 7, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.stroke();
+
+    if (player.onGround && state === "playing") {
+      const leg = Math.sin(animT * speed * 0.05) * 8;
+      ctx.strokeStyle = "hsl(" + ((baseHue + 200) % 360) + ", 70%, 45%)";
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-8, r - 6);
+      ctx.lineTo(-8 + leg, r + 8);
+      ctx.moveTo(8, r - 6);
+      ctx.lineTo(8 - leg, r + 8);
+      ctx.stroke();
+    }
+
+    // 無敵ストック表示リング
+    if (state === "playing" && (player.monarchFeather > 0 || player.monarchGuard > 0)) {
+      if (player.monarchFeather > 0) {
+        ctx.strokeStyle = "rgba(255, 210, 60, 0.8)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 7 + Math.sin(animT * 6) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (player.monarchGuard > 0) {
+        ctx.strokeStyle = "rgba(255, 120, 200, 0.55)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 11, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
   function drawPlayer() {
     const x = player.x;
     const y = player.y;
@@ -3133,6 +3662,10 @@
     }
     if (charId === "hakase") {
       drawHakaseRex(x, y, r, sx, sy, runBob);
+      return;
+    }
+    if (charId === "monarch") {
+      drawMonarchPeach(x, y, r, sx, sy, runBob);
       return;
     }
 
@@ -3490,7 +4023,9 @@
   for (let i = 0; i < modeButtons.length; i++) {
     modeButtons[i].addEventListener("click", function (e) {
       e.stopPropagation();
-      setSelectedMode(modeButtons[i].getAttribute("data-mode"));
+      const mode = modeButtons[i].getAttribute("data-mode");
+      handleSecretModeTap(mode);
+      setSelectedMode(mode);
     });
   }
 

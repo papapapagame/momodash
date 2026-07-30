@@ -4,7 +4,7 @@
   const W = 960;
   const H = 540;
   /** 更新のたびに +0.01（表示は Ver.x.xx） */
-  const APP_VERSION = "1.05";
+  const APP_VERSION = "1.06";
   const GROUND_Y = 420;
   const PLAYER_X = 180;
   const GRAVITY = 2200;
@@ -1211,10 +1211,6 @@
     );
   }
 
-<<<<<<< HEAD
-  function dive() {
-    if (state !== "playing") return;
-=======
   function canPlayerDive() {
     if (selectedCharId === "wing") return player.diveCharges > 0;
     return currentChar().canDive;
@@ -1223,7 +1219,6 @@
   function dive() {
     if (state !== "playing") return;
     if (!canPlayerDive()) return;
->>>>>>> a93e5fc6869efba267ce784d17c2907ac8d8c772
     if (player.onGround) return;
     if (player.jumpsLeft > 0) return;
     if (player.diving) return;
@@ -1231,13 +1226,10 @@
     player.diving = true;
     player.vy = DIVE_V;
     player.squish = 0.55;
-<<<<<<< HEAD
-=======
     if (selectedCharId === "wing") {
       player.diveCharges = Math.max(0, player.diveCharges - 1);
       syncFeatherHud();
     }
->>>>>>> a93e5fc6869efba267ce784d17c2907ac8d8c772
     sfxDive();
     spawnBurst(player.x, player.y - player.r, "#ffe08a", 12);
   }
@@ -1736,11 +1728,8 @@
       }
       player.onGround = true;
       player.diving = false;
-<<<<<<< HEAD
-=======
       player.spinAngle = 0;
       player.fallingInHole = false;
->>>>>>> a93e5fc6869efba267ce784d17c2907ac8d8c772
       player.jumpsLeft = maxJumps();
     } else if (player.fallingInHole || (overHole && player.y >= GROUND_Y - 2)) {
       // ヘビー桃: 羽所持中の急降下着地なら穴を破壊して着地
